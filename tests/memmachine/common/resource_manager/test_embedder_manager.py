@@ -1,4 +1,7 @@
 import pytest
+import importlib
+
+import pytest
 from pydantic import SecretStr
 
 from memmachine.common.configuration import EmbeddersConf
@@ -9,6 +12,12 @@ from memmachine.common.configuration.embedder_conf import (
 )
 from memmachine.common.embedder import Embedder
 from memmachine.common.resource_manager.embedder_manager import EmbedderManager
+
+try:
+    importlib.import_module("sentence_transformers")
+    has_sentence_transformers = True
+except ModuleNotFoundError:
+    has_sentence_transformers = False
 
 
 @pytest.fixture
@@ -59,6 +68,8 @@ async def test_build_openai_embedders(mock_conf):
 
 @pytest.mark.asyncio
 async def test_build_sentence_transformer_embedders(mock_conf):
+    if not has_sentence_transformers:
+        pytest.skip("sentence-transformers is not installed")
     builder = EmbedderManager(mock_conf)
     await builder.build_all()
 
@@ -74,7 +85,8 @@ async def test_build_all(mock_conf):
 
     assert "aws_embedder_id" in all_embedders
     assert "openai_embedder_id" in all_embedders
-    assert "sentence_transformer_id" in all_embedders
+    if has_sentence_transformers:
+        assert "sentence_transformer_id" in all_embedders
 
     for embedder in all_embedders.values():
         assert isinstance(embedder, Embedder)

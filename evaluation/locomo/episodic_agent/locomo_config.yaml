@@ -8,11 +8,9 @@ sessiondb:
 
 vector_graph_store:
   my_storage_id:
-    provider: neo4j
+    provider: sqlite
     config:
-      uri: 'bolt://localhost:7687'
-      username: neo4j
-      password: <NEO4J_PASSWORD>
+      path: locomo_graph.db
 
 embedder:
   my_embedder_id:

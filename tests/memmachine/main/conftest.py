@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -168,12 +168,11 @@ def reranker_config(request) -> tuple[str, RerankersConf]:
 
 @pytest.fixture(scope="session")
 def databases_config(
-    pg_server, neo4j_container
+    pg_server, tmp_path_factory
 ) -> tuple[dict[str, str], DatabasesConf]:
     postgres_id = "postgres_memmachine"
-    neo4j_id = "neo4j_memmachine"
-
-    neo4j_url = urlparse(neo4j_container["uri"])
+    sqlite_id = "sqlite_memmachine"
+    sqlite_path = Path(tmp_path_factory.mktemp("vector_graph_store")) / "graph.db"
 
     databases = DatabasesConf.parse(
         {
@@ -188,19 +187,16 @@ def databases_config(
                         "db_name": pg_server["database"],
                     },
                 },
-                neo4j_id: {
-                    "provider": "neo4j",
+                sqlite_id: {
+                    "provider": "sqlite",
                     "config": {
-                        "host": neo4j_url.hostname or "localhost",
-                        "port": neo4j_url.port or 7687,
-                        "user": neo4j_container["username"],
-                        "password": neo4j_container["password"],
+                        "path": str(sqlite_path),
                     },
                 },
             }
         }
     )
-    return {"postgres": postgres_id, "neo4j": neo4j_id}, databases
+    return {"postgres": postgres_id, "sqlite": sqlite_id}, databases
 
 
 @pytest.fixture(scope="session")
@@ -237,12 +233,12 @@ def memmachine_config(
     database_ids, _ = databases_config
 
     postgres_db = database_ids["postgres"]
-    neo4j_db = database_ids["neo4j"]
+    sqlite_db = database_ids["sqlite"]
 
     return Configuration(
         episodic_memory=EpisodicMemoryConfPartial(
             long_term_memory=LongTermMemoryConfPartial(
-                vector_graph_store=neo4j_db,
+                vector_graph_store=sqlite_db,
                 embedder=embedder_id,
                 reranker=reranker_id,
             ),

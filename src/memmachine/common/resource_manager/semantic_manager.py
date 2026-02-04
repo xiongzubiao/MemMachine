@@ -15,9 +15,6 @@ from memmachine.semantic_memory.semantic_model import (
     SetIdT,
 )
 from memmachine.semantic_memory.semantic_session_manager import SemanticSessionManager
-from memmachine.semantic_memory.storage.neo4j_semantic_storage import (
-    Neo4jSemanticStorage,
-)
 from memmachine.semantic_memory.storage.sqlalchemy_pgvector_semantic import (
     SqlAlchemyPgVectorSemanticStorage,
 )
@@ -41,9 +38,7 @@ class SemanticResourceManager:
         self._prompt_conf = prompt_conf
         self._episode_storage = episode_storage
 
-        self._semantic_session_resource_manager: (
-            InstanceOf[ResourceRetriever] | None
-        ) = None
+        self._semantic_session_resource_manager: ResourceRetriever | None = None
         self._semantic_service: SemanticService | None = None
         self._semantic_session_manager: SemanticSessionManager | None = None
 
@@ -58,7 +53,7 @@ class SemanticResourceManager:
 
     async def get_semantic_session_resource_manager(
         self,
-    ) -> InstanceOf[ResourceRetriever]:
+    ) -> ResourceRetriever:
         """Return a resource retriever for semantic sessions."""
         if self._semantic_session_resource_manager is not None:
             return self._semantic_session_resource_manager
@@ -106,20 +101,10 @@ class SemanticResourceManager:
                 "No database configured for semantic storage.", "semantic_memory"
             )
 
-        # TODO: validate/choose based on database provider
-        storage: SemanticStorage
-        try:
-            sql_engine = await self._resource_manager.get_sql_engine(
-                database, validate=True
-            )
-            storage = SqlAlchemyPgVectorSemanticStorage(sql_engine)
-        except ValueError:
-            # try graph store
-            neo4j_engine = await self._resource_manager.get_neo4j_driver(
-                database, validate=True
-            )
-            storage = Neo4jSemanticStorage(neo4j_engine)
-
+        sql_engine = await self._resource_manager.get_sql_engine(
+            database, validate=True
+        )
+        storage = SqlAlchemyPgVectorSemanticStorage(sql_engine)
         await storage.startup()
         return storage
 

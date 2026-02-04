@@ -1,11 +1,16 @@
 from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import importlib
 import pytest
 import pytest_asyncio
-from neo4j import AsyncGraphDatabase
-from sentence_transformers import CrossEncoder, SentenceTransformer
-from testcontainers.neo4j import Neo4jContainer
+from sqlalchemy.ext.asyncio import create_async_engine
+
+try:
+    _sentence_transformers = importlib.import_module("sentence_transformers")
+except ModuleNotFoundError:
+    pytest.skip("sentence-transformers is not installed", allow_module_level=True)
 
 from memmachine.common.embedder.sentence_transformer_embedder import (
     SentenceTransformerEmbedder,
@@ -25,9 +30,9 @@ from memmachine.common.reranker.cross_encoder_reranker import (
     CrossEncoderReranker,
     CrossEncoderRerankerParams,
 )
-from memmachine.common.vector_graph_store.neo4j_vector_graph_store import (
-    Neo4jVectorGraphStore,
-    Neo4jVectorGraphStoreParams,
+from memmachine.common.vector_graph_store.sqlite_vector_graph_store import (
+    SqliteVectorGraphStore,
+    SqliteVectorGraphStoreParams,
 )
 from memmachine.episodic_memory.long_term_memory import (
     LongTermMemory,
@@ -35,6 +40,9 @@ from memmachine.episodic_memory.long_term_memory import (
 )
 
 pytestmark = pytest.mark.integration
+
+CrossEncoder = _sentence_transformers.CrossEncoder
+SentenceTransformer = _sentence_transformers.SentenceTransformer
 
 
 @pytest.fixture(scope="module")
@@ -53,7 +61,6 @@ def embedder():
 def reranker():
     return CrossEncoderReranker(
         CrossEncoderRerankerParams(
-            model_name="cross-encoder/ms-marco-MiniLM-L6-v2",
             cross_encoder=CrossEncoder(
                 "cross-encoder/ms-marco-MiniLM-L6-v2",
             ),
@@ -61,44 +68,27 @@ def reranker():
     )
 
 
-@pytest.fixture(scope="module")
-def neo4j_connection_info():
-    neo4j_username = "neo4j"
-    neo4j_password = "password"
-
-    with Neo4jContainer(
-        image="neo4j:latest",
-        username=neo4j_username,
-        password=neo4j_password,
-    ) as neo4j:
-        yield {
-            "uri": neo4j.get_connection_url(),
-            "username": neo4j_username,
-            "password": neo4j_password,
-        }
+@pytest_asyncio.fixture(scope="module")
+async def sqlite_engine(tmp_path_factory):
+    db_path = tmp_path_factory.mktemp("vector_graph_store") / "graph.db"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    try:
+        yield engine
+    finally:
+        await engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="module")
-async def neo4j_driver(neo4j_connection_info):
-    driver = AsyncGraphDatabase.driver(
-        neo4j_connection_info["uri"],
-        auth=(
-            neo4j_connection_info["username"],
-            neo4j_connection_info["password"],
-        ),
+async def vector_graph_store(sqlite_engine):
+    store = SqliteVectorGraphStore(
+        SqliteVectorGraphStoreParams(
+            engine=sqlite_engine,
+        )
     )
-    yield driver
-    await driver.close()
-
-
-@pytest.fixture(scope="module")
-def vector_graph_store(neo4j_driver):
-    return Neo4jVectorGraphStore(
-        Neo4jVectorGraphStoreParams(
-            driver=neo4j_driver,
-            force_exact_similarity_search=True,
-        ),
-    )
+    try:
+        yield store
+    finally:
+        await store.close()
 
 
 @pytest.fixture(scope="module")
@@ -109,6 +99,7 @@ def long_term_memory(embedder, reranker, vector_graph_store):
             embedder=embedder,
             reranker=reranker,
             vector_graph_store=vector_graph_store,
+            message_sentence_chunking=False,
         ),
     )
 
@@ -219,7 +210,7 @@ async def test_search(long_term_memory):
             producer_id="Alice",
             producer_role="user",
             filterable_metadata={"project": "memmachine", "length": "short"},
-            user_metadata={"some_key": "some_value"},
+            metadata={"some_key": "some_value"},
         ),
         Episode(
             uid="episode2",
@@ -229,7 +220,7 @@ async def test_search(long_term_memory):
             producer_id="Bob",
             producer_role="user",
             filterable_metadata={"project": "other", "length": "short"},
-            user_metadata={"some_other_key": "some_other_value"},
+            metadata={"some_other_key": "some_other_value"},
         ),
         Episode(
             uid="episode3",
@@ -419,7 +410,7 @@ async def test_get_episodes(long_term_memory):
             producer_id="LLM",
             producer_role="assistant",
             produced_for_id="Alice",
-            filterable_properties={"project": "history", "length": "short"},
+            filterable_metadata={"project": "history", "length": "short"},
         ),
     ]
 

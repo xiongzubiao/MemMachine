@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock
 
+import importlib
+
 import pytest
 from pydantic import SecretStr
 
@@ -8,12 +10,19 @@ from memmachine.common.configuration.reranker_conf import (
     BM25RerankerConf,
     CohereRerankerConf,
     CrossEncoderRerankerConf,
+    IdentityRerankerConf,
     RerankersConf,
     RRFHybridRerankerConf,
 )
 from memmachine.common.embedder import Embedder
 from memmachine.common.errors import InvalidRerankerError
 from memmachine.common.resource_manager.reranker_manager import RerankerManager
+
+try:
+    importlib.import_module("sentence_transformers")
+    has_sentence_transformers = True
+except ModuleNotFoundError:
+    has_sentence_transformers = False
 
 
 @pytest.fixture
@@ -24,7 +33,7 @@ def mock_conf():
                 reranker_ids=["bm_ranker_id", "ce_ranker_id", "id_ranker_id"],
             ),
         },
-        identity={"id_ranker_id": {}},
+        identity={"id_ranker_id": IdentityRerankerConf()},
         bm25={"bm_ranker_id": BM25RerankerConf(tokenizer="simple")},
         cohere={
             "cohere_reranker_id": CohereRerankerConf(
@@ -51,7 +60,7 @@ def mock_conf():
 
 class FakeEmbedderFactory:
     @staticmethod
-    async def get_embedder(_: str) -> Embedder:
+    async def get_embedder(name: str) -> Embedder:
         return AsyncMock()
 
 
@@ -98,6 +107,8 @@ async def test_build_cohere_rerankers(reranker_manager):
 
 @pytest.mark.asyncio
 async def test_build_cross_encoder_rerankers(reranker_manager):
+    if not has_sentence_transformers:
+        pytest.skip("sentence-transformers is not installed")
     await reranker_manager.build_all()
 
     assert reranker_manager.has_reranker("ce_ranker_id")
@@ -125,6 +136,8 @@ async def test_identity_rerankers(reranker_manager):
 
 @pytest.mark.asyncio
 async def test_build_rrf_hybrid_rerankers(reranker_manager):
+    if not has_sentence_transformers:
+        pytest.skip("sentence-transformers is not installed")
     await reranker_manager.build_all()
 
     assert reranker_manager.has_reranker("my_reranker_id")

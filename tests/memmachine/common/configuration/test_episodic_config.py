@@ -14,7 +14,7 @@ def episodic_memory_conf() -> dict[str, Any]:
         "long_term_memory": {
             "embedder": "my_embedder",
             "reranker": "my_reranker",
-            "vector_graph_store": "my_neo4j",
+            "vector_graph_store": "my_sqlite",
         },
         "short_term_memory": {
             "llm_model": "my_model",

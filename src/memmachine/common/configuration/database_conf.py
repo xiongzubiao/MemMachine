@@ -12,63 +12,6 @@ from memmachine.common.configuration.mixin_confs import (
 )
 
 
-class Neo4jConf(YamlSerializableMixin, PasswordMixin):
-    """Configuration options for a Neo4j instance."""
-
-    uri: str = Field(default="", description="Neo4j database URI")
-    host: str = Field(default="localhost", description="neo4j connection host")
-    port: int = Field(default=7687, description="neo4j connection port")
-    user: str = Field(default="neo4j", description="neo4j username")
-    password: SecretStr = Field(
-        default=SecretStr("neo4j_password"),
-        description=(
-            "Password for the Neo4j database user. "
-            "If not explicitly set, a default placeholder value is used. "
-            "You may reference an environment variable using `$ENV` or `${ENV}` "
-            "syntax (for example, `$NEO4J_PASSWORD`)."
-        ),
-    )
-    force_exact_similarity_search: bool = Field(
-        default=False,
-        description="Whether to force exact similarity search",
-    )
-    range_index_creation_threshold: int | None = Field(
-        default=None,
-        description=(
-            "Minimum number of entities in a collection or relationship "
-            "required before Neo4j automatically creates a range index."
-        ),
-    )
-    vector_index_creation_threshold: int | None = Field(
-        default=None,
-        description=(
-            "Minimum number of entities in a collection or relationship "
-            "required before Neo4j automatically creates a vector index."
-        ),
-    )
-    max_connection_pool_size: int | None = Field(
-        default=None,
-        description=(
-            "Maximum number of connections to maintain in the connection pool. "
-            "Internal default is 100."
-        ),
-    )
-    connection_acquisition_timeout: float | None = Field(
-        default=None,
-        description=(
-            "Maximum time in seconds to wait for a connection from the pool. "
-            "Internal default is 60.0."
-        ),
-    )
-
-    def get_uri(self) -> str:
-        if self.uri:
-            return self.uri
-        if "neo4j+s://" in self.host:
-            return self.host
-        return f"bolt://{self.host}:{self.port}"
-
-
 class SqlAlchemyConf(YamlSerializableMixin, PasswordMixin):
     """Configuration for SQLAlchemy-backed relational databases."""
 
@@ -152,18 +95,17 @@ class SupportedDB(str, Enum):
     """Supported database providers."""
 
     # <-- Add these annotations so mypy knows these attributes exist
-    conf_cls: type[Neo4jConf] | type[SqlAlchemyConf]
+    conf_cls: type[SqlAlchemyConf]
     dialect: str | None
     driver: str | None
 
-    NEO4J = ("neo4j", Neo4jConf, None, None)
     POSTGRES = ("postgres", SqlAlchemyConf, "postgresql", "asyncpg")
     SQLITE = ("sqlite", SqlAlchemyConf, "sqlite", "aiosqlite")
 
     def __new__(
         cls,
         value: str,
-        conf_cls: type[Neo4jConf] | type[SqlAlchemyConf],
+        conf_cls: type[SqlAlchemyConf],
         dialect: str | None,
         driver: str | None,
     ) -> Self:
@@ -184,26 +126,18 @@ class SupportedDB(str, Enum):
             f"Unsupported provider '{provider}'. Supported providers are: {valid}"
         )
 
-    def build_config(self, conf: dict) -> Neo4jConf | SqlAlchemyConf:
-        if self is SupportedDB.NEO4J:
-            return self.conf_cls(**conf)
+    def build_config(self, conf: dict) -> SqlAlchemyConf:
         conf_copy = {**conf, "dialect": self.dialect, "driver": self.driver}
         return self.conf_cls(**conf_copy)
-
-    @property
-    def is_neo4j(self) -> bool:
-        return self is SupportedDB.NEO4J
 
 
 class DatabasesConf(BaseModel):
     """Top-level storage configuration mapping identifiers to backends."""
 
-    neo4j_confs: dict[str, Neo4jConf] = {}
     relational_db_confs: dict[str, SqlAlchemyConf] = {}
 
     PROVIDER_KEY: ClassVar[str] = "provider"
     CONFIG_KEY: ClassVar[str] = "config"
-    NEO4J: ClassVar[str] = "neo4j"
     RELATIONAL_DB: ClassVar[str] = "relational-db"
     POSTGRES: ClassVar[str] = "postgres"
     POSTGRESQL: ClassVar[str] = "postgresql"
@@ -216,9 +150,7 @@ class DatabasesConf(BaseModel):
 
         def add_database(db_id: str, db_type: str, config: dict) -> None:
             provider = self.SQLITE
-            if db_type == self.NEO4J:
-                provider = self.NEO4J
-            elif db_type == self.RELATIONAL_DB:
+            if db_type == self.RELATIONAL_DB:
                 dialect = config.get(self.DIALECT)
                 if dialect == self.POSTGRESQL:
                     provider = self.POSTGRES
@@ -228,9 +160,6 @@ class DatabasesConf(BaseModel):
                 self.PROVIDER_KEY: provider,
                 self.CONFIG_KEY: config,
             }
-
-        for database_id, conf in self.neo4j_confs.items():
-            add_database(database_id, self.NEO4J, conf.to_yaml_dict())
 
         for database_id, conf in self.relational_db_confs.items():
             add_database(database_id, self.RELATIONAL_DB, conf.to_yaml_dict())
@@ -248,7 +177,6 @@ class DatabasesConf(BaseModel):
         if isinstance(databases, cls):
             return databases
 
-        neo4j_dict = {}
         relational_db_dict = {}
 
         for database_id, resource_definition in databases.items():
@@ -258,12 +186,6 @@ class DatabasesConf(BaseModel):
             provider = SupportedDB.from_provider(provider_str)
             config_obj = provider.build_config(conf)
 
-            if provider.is_neo4j:
-                neo4j_dict[database_id] = config_obj
-            else:
-                relational_db_dict[database_id] = config_obj
+            relational_db_dict[database_id] = config_obj
 
-        return cls(
-            neo4j_confs=neo4j_dict,
-            relational_db_confs=relational_db_dict,
-        )
+        return cls(relational_db_confs=relational_db_dict)

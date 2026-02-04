@@ -16,7 +16,7 @@ from memmachine.common.configuration import (
     SemanticMemoryConf,
     SessionManagerConf,
 )
-from memmachine.common.configuration.database_conf import Neo4jConf, SqlAlchemyConf
+from memmachine.common.configuration.database_conf import SqlAlchemyConf
 from memmachine.common.configuration.embedder_conf import OpenAIEmbedderConf
 from memmachine.common.configuration.language_model_conf import (
     OpenAIResponsesLanguageModelConf,
@@ -35,7 +35,6 @@ from memmachine.common.resource_manager.resource_manager import (
 RERANKER_ID = "my_reranker"
 EMBEDDER_ID = "my_embedder"
 MODEL_ID = "my_model"
-NEO4J_ID = "my_neo4j"
 SQLDB_ID = "my_sqldb"
 
 
@@ -66,14 +65,6 @@ def invalid_configure() -> Configuration:
                 }
             ),
             databases=DatabasesConf(
-                neo4j_confs={
-                    NEO4J_ID: Neo4jConf(
-                        host="a.b.c.d",
-                        port=9876,
-                        user="neo4j",
-                        password=SecretStr("invalid-password"),
-                    )
-                },
                 relational_db_confs={
                     SQLDB_ID: SqlAlchemyConf(
                         host="e.f.g.h",
@@ -121,14 +112,6 @@ async def test_invalid_embedder(invalid_resource_manager):
 async def test_invalid_language_model(invalid_resource_manager):
     with pytest.raises(InvalidLanguageModelError, match="AuthenticationError"):
         _ = await invalid_resource_manager.get_language_model(MODEL_ID, validate=True)
-
-
-@pytest.mark.asyncio
-async def test_invalid_neo4j_driver(invalid_resource_manager):
-    with pytest.raises(
-        Exception, match=f"Neo4j config '{NEO4J_ID}' failed verification"
-    ):
-        _ = await invalid_resource_manager.get_neo4j_driver(NEO4J_ID, validate=True)
 
 
 @pytest.mark.asyncio

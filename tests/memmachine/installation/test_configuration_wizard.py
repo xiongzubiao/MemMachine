@@ -1,4 +1,5 @@
 from pathlib import Path
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -12,7 +13,6 @@ from memmachine.installation.configuration_wizard import (
 @pytest.fixture
 def conf_args(tmp_path) -> ConfigurationWizard.Params:
     return ConfigurationWizard.Params(
-        neo4j_provided=True,
         destination=str(tmp_path),
         prompt=False,
     )
@@ -63,27 +63,6 @@ def test_configuration_with_prompt(mock_input, conf_args):
     prompt = config.prompt
     assert "profile_prompt" in prompt.session
     assert "profile_prompt" in prompt.profile
-
-
-@patch("builtins.input")
-def test_configuration_neo4j(mock_input, conf_args):
-    conf_args.neo4j_provided = False
-    inputs = {
-        "model api key": "api_key_value",
-        "neo4j uri": "bolt://127.0.0.1:7687",
-        "neo4j username": "neo4j_user",
-        "neo4j password": "neo4j_password",
-    }
-    mock_input.side_effect = inputs.values()
-    wizard = ConfigurationWizard(conf_args)
-    conf_file = wizard.run_wizard()
-    config = Configuration.load_yml_file(conf_file)
-    neo4j_confs = config.resources.databases.neo4j_confs
-    assert len(neo4j_confs) == 1
-    for neo4j_conf in neo4j_confs.values():
-        assert neo4j_conf.uri == "bolt://127.0.0.1:7687"
-        assert neo4j_conf.user == "neo4j_user"
-        assert neo4j_conf.password.get_secret_value() == "neo4j_password"
 
 
 @patch("builtins.input")
@@ -162,7 +141,6 @@ def test_get_provided_database_config(conf_args):
     wizard = ConfigurationWizard(conf_args)
     db_conf = wizard.database_conf
     assert isinstance(db_conf, DatabasesConf)
-    assert len(db_conf.neo4j_confs) == 1
     assert len(db_conf.relational_db_confs) == 1
 
 
@@ -194,17 +172,3 @@ def test_reranker_config(conf_args):
     assert len(rerankers_conf.rrf_hybrid) == 1
     assert len(rerankers_conf.amazon_bedrock) == 0
     assert len(rerankers_conf.cross_encoder) == 0
-
-
-@patch("builtins.input")
-def test_un_provided_neo4j(mock_input, conf_args):
-    mock_input.side_effect = ["bolt://localhost:7687", "neo4j", "password"]
-    conf_args.neo4j_provided = False
-    conf = ConfigurationWizard(conf_args)
-    db_conf = conf.database_conf
-    assert len(db_conf.neo4j_confs) == 1
-    neo4j_conf = db_conf.neo4j_confs[ConfigurationWizard.NEO4J_DB_ID]
-    assert neo4j_conf.uri == "bolt://localhost:7687"
-    assert neo4j_conf.user == "neo4j"
-    assert neo4j_conf.password.get_secret_value() == "password"
-    assert len(db_conf.relational_db_confs) == 1

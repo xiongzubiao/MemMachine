@@ -316,15 +316,6 @@ class ConfigService:
         databases.extend(
             ResourceInfo(
                 name=name,
-                provider="neo4j",
-                status=ResourceStatus.READY,
-                error=None,
-            )
-            for name in db_manager.conf.neo4j_confs
-        )
-        databases.extend(
-            ResourceInfo(
-                name=name,
                 provider="sqlite" if conf.dialect == "sqlite" else "postgres",
                 status=ResourceStatus.READY,
                 error=None,

@@ -89,15 +89,20 @@ class PasswordMixin(BaseModel, WithValueFromEnv):
     specifies a pattern like $ENV_NAME in the value.
     """
 
-    password: SecretStr = Field(
-        ...,
-        description="Password for authentication.  Can reference an environment variable using $ENV_NAME syntax.",
+    password: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Password for authentication. Can reference an environment variable using "
+            "$ENV_NAME syntax."
+        ),
     )
 
     @field_validator("password", mode="before")
     @classmethod
-    def resolve_password(cls, v: str | SecretStr) -> SecretStr | str | None:
+    def resolve_password(cls, v: str | SecretStr | None) -> SecretStr | str | None:
         """Resolve environment variable references in the password."""
+        if v is None:
+            return None
         v = cls._resolve_env(v)
         if not isinstance(v, str):
             raise InvalidPasswordError("password must be a string or SecretStr")

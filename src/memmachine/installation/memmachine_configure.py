@@ -77,23 +77,7 @@ class Installer(ABC):
 
     def install(self, prompt: bool = True) -> None:
         """Install and configure MemMachine."""
-        neo4j_started_by_installer = False
-        if not self.check_neo4j_running():
-            choice = (
-                input(
-                    "Cannot find Neo4j locally. Do you want to install and start Neo4j? (y/n): "
-                )
-                .strip()
-                .lower()
-            )
-            if choice == "y":
-                self.install_and_start_neo4j()
-                neo4j_started_by_installer = True
-        else:
-            logger.info("Neo4j is already running.")
-
         wizard_args = ConfigurationWizard.Params(
-            neo4j_provided=neo4j_started_by_installer,
             destination=get_memmachine_config_dir(),
             prompt=prompt,
         )

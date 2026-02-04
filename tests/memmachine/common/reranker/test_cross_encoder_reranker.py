@@ -1,5 +1,14 @@
 import pytest
-from sentence_transformers import CrossEncoder
+import importlib
+
+import pytest
+
+try:
+    _sentence_transformers = importlib.import_module("sentence_transformers")
+except ModuleNotFoundError:
+    pytest.skip("sentence-transformers is not installed", allow_module_level=True)
+
+CrossEncoder = _sentence_transformers.CrossEncoder
 
 from memmachine.common.reranker.cross_encoder_reranker import (
     CrossEncoderReranker,

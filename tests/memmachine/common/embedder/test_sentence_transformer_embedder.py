@@ -1,5 +1,14 @@
 import pytest
-from sentence_transformers import SentenceTransformer
+import importlib
+
+import pytest
+
+try:
+    _sentence_transformers = importlib.import_module("sentence_transformers")
+except ModuleNotFoundError:
+    pytest.skip("sentence-transformers is not installed", allow_module_level=True)
+
+SentenceTransformer = _sentence_transformers.SentenceTransformer
 
 from memmachine.common.embedder.sentence_transformer_embedder import (
     SentenceTransformerEmbedder,

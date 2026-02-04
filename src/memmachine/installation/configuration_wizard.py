@@ -22,7 +22,6 @@ from memmachine.common.configuration import (
 )
 from memmachine.common.configuration.database_conf import (
     DatabasesConf,
-    Neo4jConf,
     SqlAlchemyConf,
     SupportedDB,
 )
@@ -48,9 +47,6 @@ from memmachine.common.configuration.reranker_conf import (
 from memmachine.installation.utilities import (
     DEFAULT_BEDROCK_EMBEDDING_MODEL,
     DEFAULT_BEDROCK_MODEL,
-    DEFAULT_NEO4J_PASSWORD,
-    DEFAULT_NEO4J_URI,
-    DEFAULT_NEO4J_USERNAME,
     DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS,
     DEFAULT_OLLAMA_EMBEDDING_MODEL,
     DEFAULT_OLLAMA_MODEL,
@@ -66,7 +62,6 @@ logger = logging.getLogger(__name__)
 class ConfigurationWizard:
     """Interactive configuration wizard for MemMachine."""
 
-    NEO4J_DB_ID = "neo4j_db"
     SQLITE_DB_ID = "sqlite_db"
     LANGUAGE_MODEL_NAME = "llm_model"
     EMBEDDER_NAME = "my_embedder"
@@ -76,7 +71,6 @@ class ConfigurationWizard:
     class Params:
         """Parameters for the configuration wizard."""
 
-        neo4j_provided: bool
         destination: str
         prompt: bool = False
 
@@ -85,7 +79,6 @@ class ConfigurationWizard:
         self.destination: Path = Path(args.destination)
         self.configuration_path: Path = Path(self.destination, "cfg.yml")
         self.prompt: bool = args.prompt
-        self.neo4j_provided: bool = args.neo4j_provided
 
     def run_wizard(self) -> str:
         """Run the configuration wizard and write the configuration file."""
@@ -123,7 +116,7 @@ class ConfigurationWizard:
         return SemanticMemoryConf(
             llm_model=self.LANGUAGE_MODEL_NAME,
             embedding_model=self.EMBEDDER_NAME,
-            database=self.NEO4J_DB_ID,
+            database=self.SQLITE_DB_ID,
         )
 
     @cached_property
@@ -140,7 +133,7 @@ class ConfigurationWizard:
         return LongTermMemoryConfPartial(
             embedder=self.EMBEDDER_NAME,
             reranker=self.RERANKER_NAME,
-            vector_graph_store=self.NEO4J_DB_ID,
+            vector_graph_store=self.SQLITE_DB_ID,
         )
 
     @cached_property
@@ -299,37 +292,12 @@ class ConfigurationWizard:
 
     @cached_property
     def database_conf(self) -> DatabasesConf:
-        neo4j_db_conf = self.neo4j_configs
         db_provider = SupportedDB.from_provider("sqlite")
         sqlite_db_conf = cast(
             SqlAlchemyConf,
             db_provider.build_config({"path": "memmachine.db"}),
         )
-        return DatabasesConf(
-            neo4j_confs={self.NEO4J_DB_ID: neo4j_db_conf},
-            relational_db_confs={self.SQLITE_DB_ID: sqlite_db_conf},
-        )
-
-    @cached_property
-    def neo4j_configs(self) -> Neo4jConf:
-        neo4j_uri = DEFAULT_NEO4J_URI
-        neo4j_username = DEFAULT_NEO4J_USERNAME
-        neo4j_password = DEFAULT_NEO4J_PASSWORD
-        if not self.neo4j_provided:
-            neo4j_uri = input(f"Enter Neo4j URI [{neo4j_uri}]: ").strip() or neo4j_uri
-            neo4j_username = (
-                input(f"Enter Neo4j username [{neo4j_username}]: ").strip()
-                or neo4j_username
-            )
-            neo4j_password = (
-                input(f"Enter Neo4j password [{neo4j_password}]: ").strip()
-                or neo4j_password
-            )
-        return Neo4jConf(
-            uri=neo4j_uri,
-            user=neo4j_username,
-            password=SecretStr(neo4j_password),
-        )
+        return DatabasesConf(relational_db_confs={self.SQLITE_DB_ID: sqlite_db_conf})
 
     @cached_property
     def api_key(self) -> str:

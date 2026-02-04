@@ -63,7 +63,6 @@ def mock_resource_manager():
 
     # Mock database manager
     db_manager = MagicMock()
-    db_manager.conf.neo4j_confs = {}
     db_manager.conf.relational_db_confs = {"sqlite-db": MagicMock(dialect="sqlite")}
     resource_manager.database_manager = db_manager
 

@@ -4,7 +4,6 @@ import asyncio
 import logging
 from asyncio import Lock
 
-from neo4j import AsyncDriver
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from memmachine.common.configuration import Configuration
@@ -97,12 +96,6 @@ class ResourceManagerImpl:
     async def get_sql_engine(self, name: str, validate: bool = False) -> AsyncEngine:
         """Return a SQL engine by name."""
         return await self._database_manager.async_get_sql_engine(
-            name, validate=validate
-        )
-
-    async def get_neo4j_driver(self, name: str, validate: bool = False) -> AsyncDriver:
-        """Return a Neo4j driver by name."""
-        return await self._database_manager.async_get_neo4j_driver(
             name, validate=validate
         )
 
