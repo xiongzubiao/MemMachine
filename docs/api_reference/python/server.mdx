@@ -155,7 +155,7 @@ async def main():
         import traceback
         traceback.print_exc()
         print(f"An error occurred: {e}")
-        print("Ensure Neo4j is running and API keys are set in configuration.yml.")
+        print("Ensure configuration.yml is set and API keys are configured.")
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -172,10 +172,7 @@ Checking for session: hello_session
 Creating session: hello_session
 Adding memory...
 2025-12-06 00:39:37,443 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
-2025-12-06 00:39:37,474 [INFO] neo4j.notifications - Received notification from DBMS server: <GqlStatusObject gql_status='03N90', status_description='info: cartesian product. The disconnected patterns `(source:SANITIZED_Derivative_u5f_hello_u5f_session {uid: edge.source_uid}), (target:SANITIZED_Episode_u5f_hello_u5f_session {uid: edge.target_uid})` build a cartesian product. A cartesian product may produce a large amount of data and slow down query processing.', position=<SummaryInputPosition line=2, column=1, offset=22>, raw_classification='PERFORMANCE', classification=<NotificationClassification.PERFORMANCE: 'PERFORMANCE'>, raw_severity='INFORMATION', severity=<NotificationSeverity.INFORMATION: 'INFORMATION'>, diagnostic_record={'_classification': 'PERFORMANCE', '_status_parameters': {'pat': '(source:SANITIZED_Derivative_u5f_hello_u5f_session {uid: edge.source_uid}), (target:SANITIZED_Episode_u5f_hello_u5f_session {uid: edge.target_uid})'}, '_severity': 'INFORMATION', '_position': {'offset': 22, 'line': 2, 'column': 1}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: 'UNWIND $edges AS edge\nMATCH    (source:SANITIZED_Derivative_u5f_hello_u5f_session {uid: edge.source_uid}),    (target:SANITIZED_Episode_u5f_hello_u5f_session {uid: edge.target_uid})\nCREATE (source)    -[r:SANITIZED_DERIVED_u5f_FROM_u5f_hello_u5f_session {uid: edge.uid}]->    (target)\nSET r += edge.properties'
 Searching memory...
-2025-12-06 00:39:37,480 [INFO] alembic.runtime.migration - Context impl PostgresqlImpl.
-2025-12-06 00:39:37,480 [INFO] alembic.runtime.migration - Will assume transactional DDL.
 2025-12-06 00:39:38,200 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
 2025-12-06 00:39:38,669 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
 Found in Short Term Memory: Hello World! I am learning MemMachine.

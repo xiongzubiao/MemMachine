@@ -215,7 +215,7 @@ class ResourcesConf(BaseModel):
     rerankers: RerankersConf
     databases: DatabasesConf
 
-    def to_yaml_dict(self) -> dict:
+    def to_yaml_dict(self) -> dict[str, Any]:
         return {
             "embedders": self.embedders.to_yaml_dict(),
             "language_models": self.language_models.to_yaml_dict(),
@@ -234,10 +234,12 @@ class ResourcesConf(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        embedders = EmbeddersConf.parse(data)
-        language_models = LanguageModelsConf.parse(data)
-        rerankers = RerankersConf.parse(data)
-        databases = DatabasesConf.parse(data)
+        data_dict = cast(dict[str, Any], data)
+
+        embedders = EmbeddersConf.parse(data_dict)
+        language_models = LanguageModelsConf.parse(data_dict)
+        rerankers = RerankersConf.parse(data_dict)
+        databases = DatabasesConf.parse(data_dict)
 
         return {
             "embedders": embedders,
@@ -263,7 +265,7 @@ class ServerConf(YamlSerializableMixin):
 
     @model_validator(mode="before")
     @classmethod
-    def _overwrite_with_env_variable(cls, data: dict) -> dict:
+    def _overwrite_with_env_variable(cls, data: dict[str, Any]) -> dict[str, Any]:
         data = dict(data or {})
 
         host = os.getenv("HOST")

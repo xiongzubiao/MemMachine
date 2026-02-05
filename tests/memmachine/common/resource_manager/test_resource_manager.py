@@ -67,14 +67,9 @@ def invalid_configure() -> Configuration:
             databases=DatabasesConf(
                 relational_db_confs={
                     SQLDB_ID: SqlAlchemyConf(
-                        host="e.f.g.h",
-                        port=8765,
-                        path="invalid_db_path",
-                        dialect="postgresql",
-                        driver="asyncpg",
-                        user="db_user",
-                        password=SecretStr("invalid-password"),
-                        db_name="invalid_db_name",
+                        path="/nope/invalid_db.sqlite",
+                        dialect="sqlite",
+                        driver="aiosqlite",
                     )
                 },
             ),

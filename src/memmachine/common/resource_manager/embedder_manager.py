@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 from typing import TYPE_CHECKING
 
@@ -216,16 +217,15 @@ class EmbedderManager(BaseResourceManager[Embedder]):
 
     def _build_sentence_transformer_embedders(self, name: str) -> Embedder:
         conf = self.conf.sentence_transformer[name]
-
-        from sentence_transformers import SentenceTransformer
-
+        sentence_transformers = importlib.import_module("sentence_transformers")
+        sentence_transformer_cls = sentence_transformers.SentenceTransformer
         from memmachine.common.embedder.sentence_transformer_embedder import (
             SentenceTransformerEmbedder,
             SentenceTransformerEmbedderParams,
         )
 
         model_name = conf.model
-        sentence_transformer = SentenceTransformer(model_name)
+        sentence_transformer = sentence_transformer_cls(model_name)
 
         params = SentenceTransformerEmbedderParams(
             model_name=model_name,

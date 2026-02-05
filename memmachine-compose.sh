@@ -433,14 +433,47 @@ AWK_SCRIPT
 # In lieu of yq, use awk to read over the configuration.yml file line-by-line,
 # and set the database credentials using the same environment variables as in docker-compose.yml
 set_config_defaults() {
-    awk -v pg_user="${POSTGRES_USER:-memmachine}" \
-        -v pg_pass="${POSTGRES_PASSWORD:-memmachine_password}" \
-        -v pg_db="${POSTGRES_DB:-memmachine}" '
+    awk '
 /^storage:/ || /^vector_graph_store:/ {
   vendor = ""
+  in_profile_storage = 0
+  in_profile_config = 0
 }
 /^[a-zA-Z][^:]*:/ && !/^storage:/ && !/^vector_graph_store:/ {
   vendor = ""
+  in_profile_storage = 0
+  in_profile_config = 0
+}
+
+/^    profile_storage:$/ {
+  in_profile_storage = 1
+  in_profile_config = 0
+  print
+  next
+}
+
+in_profile_storage && /^    [a-zA-Z_][a-zA-Z0-9_]*:$/ && !/^    profile_storage:$/ {
+  in_profile_storage = 0
+  in_profile_config = 0
+}
+
+in_profile_storage && /^      provider:/ {
+  print "      provider: sqlite"
+  next
+}
+
+in_profile_storage && /^      config:/ {
+  print
+  print "        path: /tmp/memmachine_profile_data/profile.db"
+  in_profile_config = 1
+  next
+}
+
+in_profile_config {
+  if ($0 ~ /^        /) {
+    next
+  }
+  in_profile_config = 0
 }
 
 /vendor_name:/ {
@@ -448,21 +481,18 @@ set_config_defaults() {
   gsub(/^[ \t]+|[ \t]+$/, "", vendor)  # trim whitespace
 }
 
-/provider:/ && /postgres/ {
-  vendor = "postgres"
-}
- /provider:/ && /sqlite/ {
+/provider:/ && /sqlite/ {
   vendor = "sqlite"
 }
-
-# Handle postgres configurations
-vendor == "postgres" && /host:/ { sub(/localhost/, "postgres") }
-vendor == "postgres" && /user:/ { sub(/postgres/, pg_user) }
-vendor == "postgres" && /db_name:/ { sub(/postgres/, pg_db) }
-vendor == "postgres" && /password:/ { sub(/<YOUR_PASSWORD_HERE>/, pg_pass) }
+ /provider:/ && /chroma/ {
+  vendor = "chroma"
+ }
 
  # Handle sqlite graph store path
  vendor == "sqlite" && /path:/ { sub(/memmachine_graph.db/, "/tmp/memmachine_graph_data/graph.db") }
+
+ # Handle chroma semantic storage path
+ vendor == "chroma" && /path:/ { sub(/memmachine_semantic_chroma/, "/tmp/memmachine_chroma_data") }
 
 { print }
 ' configuration.yml > configuration.yml.tmp && mv configuration.yml.tmp configuration.yml
@@ -795,15 +825,6 @@ wait_for_health() {
     
     print_info "Checking service health..."
     
-    # Wait for PostgreSQL
-    print_info "Waiting for PostgreSQL to be ready..."
-    if timeout 120 bash -c "until docker exec memmachine-postgres pg_isready -U ${POSTGRES_USER:-memmachine} -d ${POSTGRES_DB:-memmachine}; do sleep 2; done"; then
-        print_success "PostgreSQL is ready"
-    else
-        print_error "PostgreSQL failed to become ready in 120 seconds. Check container logs and configuration."
-        exit 1
-    fi
-    
     # Wait for MemMachine
     print_info "Waiting for MemMachine to be ready..."
     if timeout 120 bash -c "until curl -f http://localhost:${MEMORY_SERVER_PORT:-8080}/api/v2/health > /dev/null 2>&1; do sleep 5; done"; then
@@ -824,8 +845,9 @@ show_service_info() {
     echo "  📊 Metrics: http://localhost:${MEMORY_SERVER_PORT:-8080}/api/v2/metrics"
     echo ""
     echo "Database Access:"
-    echo "  🐘 PostgreSQL: localhost:${POSTGRES_PORT:-5432} (user: ${POSTGRES_USER:-memmachine}, db: ${POSTGRES_DB:-memmachine})"
+    echo "  🗄️ Profile Store (SQLite): /tmp/memmachine_profile_data/profile.db"
     echo "  🧠 Vector Graph Store (SQLite): /tmp/memmachine_graph_data/graph.db"
+    echo "  🧠 Semantic Store (Chroma): /tmp/memmachine_chroma_data"
     echo ""
     echo "Useful Commands:"
     echo "  📋 View logs: docker-compose logs -f"

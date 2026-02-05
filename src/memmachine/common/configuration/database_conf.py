@@ -1,7 +1,7 @@
 """Storage configuration models."""
 
 from enum import Enum
-from typing import ClassVar, Self
+from typing import Any, ClassVar, Self
 
 import yaml
 from pydantic import BaseModel, Field, SecretStr, model_validator
@@ -91,6 +91,16 @@ class SqlAlchemyConf(YamlSerializableMixin, PasswordMixin):
         return self
 
 
+class ChromaConf(YamlSerializableMixin):
+    """Configuration for Chroma semantic storage."""
+
+    path: str = Field(..., description="Chroma persistence directory")
+    collection_prefix: str = Field(
+        default="memmachine",
+        description="Prefix for Chroma collection names",
+    )
+
+
 class SupportedDB(str, Enum):
     """Supported database providers."""
 
@@ -99,7 +109,6 @@ class SupportedDB(str, Enum):
     dialect: str | None
     driver: str | None
 
-    POSTGRES = ("postgres", SqlAlchemyConf, "postgresql", "asyncpg")
     SQLITE = ("sqlite", SqlAlchemyConf, "sqlite", "aiosqlite")
 
     def __new__(
@@ -126,8 +135,12 @@ class SupportedDB(str, Enum):
             f"Unsupported provider '{provider}'. Supported providers are: {valid}"
         )
 
-    def build_config(self, conf: dict) -> SqlAlchemyConf:
-        conf_copy = {**conf, "dialect": self.dialect, "driver": self.driver}
+    def build_config(self, conf: dict[str, Any]) -> SqlAlchemyConf:
+        conf_copy: dict[str, Any] = {
+            **conf,
+            "dialect": self.dialect,
+            "driver": self.driver,
+        }
         return self.conf_cls(**conf_copy)
 
 
@@ -135,27 +148,23 @@ class DatabasesConf(BaseModel):
     """Top-level storage configuration mapping identifiers to backends."""
 
     relational_db_confs: dict[str, SqlAlchemyConf] = {}
+    vector_db_confs: dict[str, ChromaConf] = {}
 
     PROVIDER_KEY: ClassVar[str] = "provider"
     CONFIG_KEY: ClassVar[str] = "config"
     RELATIONAL_DB: ClassVar[str] = "relational-db"
-    POSTGRES: ClassVar[str] = "postgres"
-    POSTGRESQL: ClassVar[str] = "postgresql"
     SQLITE: ClassVar[str] = "sqlite"
+    CHROMA: ClassVar[str] = "chroma"
     DIALECT: ClassVar[str] = "dialect"
 
-    def to_yaml_dict(self) -> dict:
+    def to_yaml_dict(self) -> dict[str, dict[str, Any]]:
         """Serialize the database configuration to a YAML-compatible dictionary."""
-        databases: dict[str, dict] = {}
+        databases: dict[str, dict[str, Any]] = {}
 
-        def add_database(db_id: str, db_type: str, config: dict) -> None:
+        def add_database(db_id: str, db_type: str, config: dict[str, Any]) -> None:
             provider = self.SQLITE
             if db_type == self.RELATIONAL_DB:
-                dialect = config.get(self.DIALECT)
-                if dialect == self.POSTGRESQL:
-                    provider = self.POSTGRES
-                elif dialect == self.SQLITE:
-                    provider = self.SQLITE
+                provider = self.SQLITE
             databases[db_id] = {
                 self.PROVIDER_KEY: provider,
                 self.CONFIG_KEY: config,
@@ -164,6 +173,12 @@ class DatabasesConf(BaseModel):
         for database_id, conf in self.relational_db_confs.items():
             add_database(database_id, self.RELATIONAL_DB, conf.to_yaml_dict())
 
+        for database_id, conf in self.vector_db_confs.items():
+            databases[database_id] = {
+                self.PROVIDER_KEY: self.CHROMA,
+                self.CONFIG_KEY: conf.to_yaml_dict(),
+            }
+
         return databases
 
     def to_yaml(self) -> str:
@@ -171,21 +186,43 @@ class DatabasesConf(BaseModel):
         return yaml.safe_dump(data, sort_keys=True)
 
     @classmethod
-    def parse(cls, input_dict: dict) -> Self:
+    def parse(cls, input_dict: dict[str, Any]) -> Self:
         databases = input_dict.get("databases", {})
 
         if isinstance(databases, cls):
             return databases
 
-        relational_db_dict = {}
+        relational_db_dict: dict[str, SqlAlchemyConf] = {}
+        vector_db_dict: dict[str, ChromaConf] = {}
 
         for database_id, resource_definition in databases.items():
             provider_str = resource_definition.get(cls.PROVIDER_KEY)
+            if not isinstance(provider_str, str):
+                valid = f"{SupportedDB.SQLITE.value}, {cls.CHROMA}"
+                raise ValueError(
+                    f"Unsupported provider '{provider_str}'. Supported providers are: {valid}"
+                )
+
             conf = resource_definition.get(cls.CONFIG_KEY, {})
+            if not isinstance(conf, dict):
+                conf = {}
 
-            provider = SupportedDB.from_provider(provider_str)
+            if provider_str == cls.CHROMA:
+                vector_db_dict[database_id] = ChromaConf(**conf)
+                continue
+
+            try:
+                provider = SupportedDB.from_provider(provider_str)
+            except ValueError as exc:
+                valid = f"{SupportedDB.SQLITE.value}, {cls.CHROMA}"
+                raise ValueError(
+                    f"Unsupported provider '{provider_str}'. Supported providers are: {valid}"
+                ) from exc
+
             config_obj = provider.build_config(conf)
-
             relational_db_dict[database_id] = config_obj
 
-        return cls(relational_db_confs=relational_db_dict)
+        return cls(
+            relational_db_confs=relational_db_dict,
+            vector_db_confs=vector_db_dict,
+        )

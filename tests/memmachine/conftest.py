@@ -5,9 +5,7 @@ from unittest.mock import create_autospec
 import pytest
 import pytest_asyncio
 from sqlalchemy import StaticPool
-from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
-from testcontainers.postgres import PostgresContainer
 
 from memmachine.common.embedder.openai_embedder import (
     OpenAIEmbedder,
@@ -31,8 +29,9 @@ from memmachine.common.language_model.openai_responses_language_model import (
     OpenAIResponsesLanguageModel,
     OpenAIResponsesLanguageModelParams,
 )
-from memmachine.semantic_memory.storage.sqlalchemy_pgvector_semantic import (
-    SqlAlchemyPgVectorSemanticStorage,
+from memmachine.semantic_memory.storage.chroma_semantic_storage import (
+    ChromaSemanticStorage,
+    ChromaSemanticStorageParams,
 )
 from tests.memmachine.common.reranker.fake_embedder import FakeEmbedder
 from tests.memmachine.semantic_memory.storage.in_memory_semantic_storage import (
@@ -106,6 +105,8 @@ def openai_llm_model(openai_client, openai_integration_config):
         OpenAIResponsesLanguageModelParams(
             client=openai_client,
             model=openai_integration_config["llm_model"],
+            max_retry_interval_seconds=120,
+            metrics_factory=None,
         ),
     )
 
@@ -142,6 +143,8 @@ def openai_chat_completions_llm_model(
         OpenAIChatCompletionsLanguageModelParams(
             client=openai_compat_client,
             model=openai_chat_completions_llm_config["model"],
+            max_retry_interval_seconds=120,
+            metrics_factory=None,
         ),
     )
 
@@ -225,6 +228,10 @@ def bedrock_llm_model(
         AmazonBedrockLanguageModelParams(
             client=boto3_bedrock_runtime_client,
             model_id=config["model"],
+            inference_config=None,
+            additional_model_request_fields=None,
+            max_retry_interval_seconds=120,
+            metrics_factory=None,
         )
     )
 
@@ -248,49 +255,6 @@ def real_llm_model(request):
             raise ValueError(f"Unknown LLM model type: {request.param}")
 
 
-@pytest.fixture(scope="session")
-def pg_container(pytestconfig):
-    if not pytestconfig.getoption("--integration"):
-        pytest.skip("need --integration option to start Postgres container")
-
-    with PostgresContainer("pgvector/pgvector:pg16") as container:
-        yield container
-
-
-@pytest_asyncio.fixture(scope="session")
-async def pg_server(pg_container):
-    host = pg_container.get_container_host_ip()
-    port = int(pg_container.get_exposed_port(5432))
-    database = pg_container.dbname
-    user = pg_container.username
-    password = pg_container.password
-
-    yield {
-        "host": host,
-        "port": port,
-        "user": user,
-        "password": password,
-        "database": database,
-    }
-
-
-@pytest_asyncio.fixture
-async def sqlalchemy_pg_engine(pg_server):
-    engine = create_async_engine(
-        URL.create(
-            "postgresql+asyncpg",
-            username=pg_server["user"],
-            password=pg_server["password"],
-            host=pg_server["host"],
-            port=pg_server["port"],
-            database=pg_server["database"],
-        ),
-    )
-
-    yield engine
-    await engine.dispose()
-
-
 @pytest_asyncio.fixture
 async def sqlalchemy_sqlite_engine():
     engine = create_async_engine(
@@ -305,7 +269,6 @@ async def sqlalchemy_sqlite_engine():
 @pytest.fixture(
     params=[
         "sqlalchemy_sqlite_engine",
-        pytest.param("sqlalchemy_pg_engine", marks=pytest.mark.integration),
     ],
 )
 def sqlalchemy_engine(request):
@@ -313,27 +276,30 @@ def sqlalchemy_engine(request):
 
 
 @pytest_asyncio.fixture
-async def pgvector_semantic_storage(sqlalchemy_pg_engine):
-    storage = SqlAlchemyPgVectorSemanticStorage(sqlalchemy_pg_engine)
-    storage.backend_name = "postgres"
+async def in_memory_semantic_storage():
+    store = InMemorySemanticStorage()
+    await store.startup()
+    yield store
+    await store.cleanup()
+
+
+@pytest_asyncio.fixture
+async def chroma_semantic_storage(tmp_path):
+    storage = ChromaSemanticStorage(
+        ChromaSemanticStorageParams(
+            path=str(tmp_path / "chroma"),
+            collection_prefix="test",
+        )
+    )
     await storage.startup()
     yield storage
     await storage.delete_all()
     await storage.cleanup()
 
 
-@pytest_asyncio.fixture
-async def in_memory_semantic_storage():
-    store = InMemorySemanticStorage()
-    store.backend_name = "sqlite"
-    await store.startup()
-    yield store
-    await store.cleanup()
-
-
 @pytest.fixture(
     params=[
-        pytest.param("pgvector_semantic_storage", marks=pytest.mark.integration),
+        "chroma_semantic_storage",
         "in_memory_semantic_storage",
     ],
 )

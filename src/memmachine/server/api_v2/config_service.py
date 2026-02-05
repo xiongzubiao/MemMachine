@@ -316,11 +316,21 @@ class ConfigService:
         databases.extend(
             ResourceInfo(
                 name=name,
-                provider="sqlite" if conf.dialect == "sqlite" else "postgres",
+                provider=conf.dialect,
                 status=ResourceStatus.READY,
                 error=None,
             )
             for name, conf in db_manager.conf.relational_db_confs.items()
+        )
+
+        databases.extend(
+            ResourceInfo(
+                name=name,
+                provider="chroma",
+                status=ResourceStatus.READY,
+                error=None,
+            )
+            for name in db_manager.conf.vector_db_confs.keys()
         )
 
         return ResourcesStatus(

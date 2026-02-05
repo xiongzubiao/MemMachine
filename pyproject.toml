@@ -13,8 +13,6 @@ memmachine-client = { workspace = true }
 name = "memmachine"
 version = "0.0.0"  # Placeholder version for workspace root
 dependencies = [
-    "alembic>=1.17.1",
-    "asyncpg>=0.31.0",
     "aiosqlite>=0.20.0",
     "boto3>=1.40.40",
     "boto3-stubs==1.40.64",
@@ -28,7 +26,7 @@ dependencies = [
     "langchain-aws>=0.2.33",
     "nltk>=3.9.1",
     "openai>=1.104.2",
-    "pgvector>=0.4.1",
+    "chromadb>=0.5.0",
     "prometheus-client>=0.22.1",
     "pydantic>=2.11.7",
     "pyyaml>=6.0.2",
@@ -78,7 +76,6 @@ dev = [
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
     "ruff>=0.13.2",
-    "testcontainers[postgres]>=4.13.1",
     "ty>=0.0.11",
     "pytest-cov>=7.0.0",
     "pytest-xdist>=3.8.0",
@@ -181,6 +178,7 @@ ignore = [
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+norecursedirs = ["worktree"]
 
 markers = [
     "integration: mark the test as an integration test",

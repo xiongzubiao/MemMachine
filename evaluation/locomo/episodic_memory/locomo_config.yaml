@@ -1,13 +1,13 @@
 long_term_memory:
   embedder: my_embedder_id
   reranker: my_reranker_id
-  vector_graph_store: my_storage_id
+  vector_graph_store: profile_storage
 
 sessiondb:
   uri: sqlitetest.db
 
 vector_graph_store:
-  my_storage_id:
+  profile_storage:
     provider: sqlite
     config:
       path: locomo_graph.db

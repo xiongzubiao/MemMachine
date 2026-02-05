@@ -15,8 +15,9 @@ from memmachine.semantic_memory.semantic_model import (
     SetIdT,
 )
 from memmachine.semantic_memory.semantic_session_manager import SemanticSessionManager
-from memmachine.semantic_memory.storage.sqlalchemy_pgvector_semantic import (
-    SqlAlchemyPgVectorSemanticStorage,
+from memmachine.semantic_memory.storage.chroma_semantic_storage import (
+    ChromaSemanticStorage,
+    ChromaSemanticStorageParams,
 )
 from memmachine.semantic_memory.storage.storage_base import SemanticStorage
 
@@ -101,10 +102,20 @@ class SemanticResourceManager:
                 "No database configured for semantic storage.", "semantic_memory"
             )
 
-        sql_engine = await self._resource_manager.get_sql_engine(
-            database, validate=True
+        try:
+            chroma_conf = self._resource_manager.get_vector_db_conf(database)
+        except ValueError as exc:
+            raise ResourceNotReadyError(
+                "No Chroma database configured for semantic storage.",
+                "semantic_memory",
+            ) from exc
+
+        storage = ChromaSemanticStorage(
+            ChromaSemanticStorageParams(
+                path=chroma_conf.path,
+                collection_prefix=chroma_conf.collection_prefix,
+            )
         )
-        storage = SqlAlchemyPgVectorSemanticStorage(sql_engine)
         await storage.startup()
         return storage
 

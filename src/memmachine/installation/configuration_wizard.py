@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import cast
 
 from pydantic import SecretStr
 
@@ -21,6 +20,7 @@ from memmachine.common.configuration import (
     SessionManagerConf,
 )
 from memmachine.common.configuration.database_conf import (
+    ChromaConf,
     DatabasesConf,
     SqlAlchemyConf,
     SupportedDB,
@@ -63,6 +63,7 @@ class ConfigurationWizard:
     """Interactive configuration wizard for MemMachine."""
 
     SQLITE_DB_ID = "sqlite_db"
+    CHROMA_DB_ID = "chroma_db"
     LANGUAGE_MODEL_NAME = "llm_model"
     EMBEDDER_NAME = "my_embedder"
     RERANKER_NAME = "my_reranker"
@@ -116,7 +117,7 @@ class ConfigurationWizard:
         return SemanticMemoryConf(
             llm_model=self.LANGUAGE_MODEL_NAME,
             embedding_model=self.EMBEDDER_NAME,
-            database=self.SQLITE_DB_ID,
+            database=self.CHROMA_DB_ID,
         )
 
     @cached_property
@@ -293,11 +294,15 @@ class ConfigurationWizard:
     @cached_property
     def database_conf(self) -> DatabasesConf:
         db_provider = SupportedDB.from_provider("sqlite")
-        sqlite_db_conf = cast(
-            SqlAlchemyConf,
-            db_provider.build_config({"path": "memmachine.db"}),
+        sqlite_db_conf = db_provider.build_config({"path": "memmachine.db"})
+        chroma_conf = ChromaConf(
+            path="semantic_chroma",
+            collection_prefix="memmachine",
         )
-        return DatabasesConf(relational_db_confs={self.SQLITE_DB_ID: sqlite_db_conf})
+        return DatabasesConf(
+            relational_db_confs={self.SQLITE_DB_ID: sqlite_db_conf},
+            vector_db_confs={self.CHROMA_DB_ID: chroma_conf},
+        )
 
     @cached_property
     def api_key(self) -> str:

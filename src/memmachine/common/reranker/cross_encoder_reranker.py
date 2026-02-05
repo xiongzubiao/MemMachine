@@ -1,19 +1,31 @@
 """Cross-encoder based reranker implementation."""
 
 import asyncio
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, InstanceOf
-from sentence_transformers import CrossEncoder
 
 from memmachine.common.utils import chunk_text, unflatten_like
 
 from .reranker import Reranker
 
 
+@runtime_checkable
+class CrossEncoderProtocol(Protocol):
+    """Runtime-checkable subset of CrossEncoder interface."""
+
+    def predict(
+        self,
+        inputs: list[tuple[str, str]],
+        *,
+        show_progress_bar: bool = False,
+    ) -> list[float]: ...
+
+
 class CrossEncoderRerankerParams(BaseModel):
     """Parameters for CrossEncoderReranker."""
 
-    cross_encoder: InstanceOf[CrossEncoder] = Field(
+    cross_encoder: InstanceOf[CrossEncoderProtocol] = Field(
         ...,
         description="The cross-encoder model to use for reranking",
     )

@@ -1,27 +1,4 @@
 services:
-  # PostgreSQL with pgvector extension for profile memory storage
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: memmachine-postgres
-    restart: unless-stopped
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-memmachine}
-      POSTGRES_USER: ${POSTGRES_USER:-memmachine}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-memmachine_password}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-memmachine} -d ${POSTGRES_DB:-memmachine}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    networks:
-      - memmachine-network
-
   # MemMachine application
   memmachine:
     image: ${MEMMACHINE_IMAGE:-memmachine/memmachine}
@@ -31,13 +8,6 @@ services:
     ports:
       - "${MEMORY_SERVER_PORT:-8080}:8080"
     environment:
-      # Database configuration
-      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
-      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      POSTGRES_USER: ${POSTGRES_USER:-memmachine}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-memmachine_password}
-      POSTGRES_DB: ${POSTGRES_DB:-memmachine}
-
       # Application configuration
       MEMORY_CONFIG: ${MEMORY_CONFIG:-/app/configuration.yml}
       MCP_BASE_URL: ${MCP_BASE_URL:-http://memmachine:8080}
@@ -50,10 +20,9 @@ services:
     volumes:
       - ./configuration.yml:/app/configuration.yml:ro,Z
       - memmachine_logs:/tmp/memory_logs
+      - memmachine_profile_data:/tmp/memmachine_profile_data
       - memmachine_graph_data:/tmp/memmachine_graph_data
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - memmachine_chroma_data:/tmp/memmachine_chroma_data
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/api/v2/health"]
       interval: 30s
@@ -66,9 +35,11 @@ services:
       - "host.docker.internal:host-gateway"
 
 volumes:
-  postgres_data:
+  memmachine_profile_data:
     driver: local
   memmachine_graph_data:
+    driver: local
+  memmachine_chroma_data:
     driver: local
   memmachine_logs:
     driver: local

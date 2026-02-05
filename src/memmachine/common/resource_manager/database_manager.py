@@ -7,7 +7,7 @@ from typing import Any, Self
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from memmachine.common.configuration.database_conf import DatabasesConf
+from memmachine.common.configuration.database_conf import ChromaConf, DatabasesConf
 from memmachine.common.errors import SQLConfigurationError
 from memmachine.common.vector_graph_store import VectorGraphStore
 from memmachine.common.vector_graph_store.sqlite_vector_graph_store import (
@@ -131,6 +131,13 @@ class DatabaseManager:
                 await self.validate_sql_engine(name, engine)
             self.sql_engines[name] = engine
             return engine
+
+    def get_vector_db_conf(self, name: str) -> ChromaConf:
+        """Return the vector database configuration by name."""
+        conf = self.conf.vector_db_confs.get(name)
+        if not conf:
+            raise ValueError(f"Vector database config '{name}' not found.")
+        return conf
 
     def get_sql_engine(self, name: str) -> AsyncEngine:
         """Sync wrapper to get SQL engine lazily."""

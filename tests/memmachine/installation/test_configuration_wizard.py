@@ -88,7 +88,9 @@ def test_configuration_wizard_aws_provider(mock_input, conf_args):
     assert len(embedders) == 1
     for embedder in embedders.values():
         assert embedder.region == "us-west-2"
+        assert embedder.aws_access_key_id is not None
         assert embedder.aws_access_key_id.get_secret_value() == "key"
+        assert embedder.aws_secret_access_key is not None
         assert embedder.aws_secret_access_key.get_secret_value() == "secret"
         assert embedder.aws_session_token is None
         assert embedder.model_id == "amazon.titan-embed-text-v3"
@@ -96,7 +98,9 @@ def test_configuration_wizard_aws_provider(mock_input, conf_args):
     assert len(models) == 1
     for model in models.values():
         assert model.region == "us-west-2"
+        assert model.aws_access_key_id is not None
         assert model.aws_access_key_id.get_secret_value() == "key"
+        assert model.aws_secret_access_key is not None
         assert model.aws_secret_access_key.get_secret_value() == "secret"
         assert model.aws_session_token is None
         assert model.model_id == "openai.gpt-oss-30b-1:0"
@@ -142,6 +146,7 @@ def test_get_provided_database_config(conf_args):
     db_conf = wizard.database_conf
     assert isinstance(db_conf, DatabasesConf)
     assert len(db_conf.relational_db_confs) == 1
+    assert len(db_conf.vector_db_confs) == 1
 
 
 @patch("builtins.input")

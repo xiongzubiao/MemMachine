@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import re
 from collections.abc import Callable
@@ -187,8 +188,8 @@ class RerankerManager(BaseResourceManager[Reranker]):
         return self._rerankers[name]
 
     async def _build_cross_encoder_reranker(self, name: str) -> Reranker:
-        from sentence_transformers import CrossEncoder
-
+        sentence_transformers = importlib.import_module("sentence_transformers")
+        cross_encoder_cls = sentence_transformers.CrossEncoder
         from memmachine.common.reranker.cross_encoder_reranker import (
             CrossEncoderReranker,
             CrossEncoderRerankerParams,
@@ -196,7 +197,7 @@ class RerankerManager(BaseResourceManager[Reranker]):
 
         conf = self.conf.cross_encoder[name]
 
-        cross_encoder = CrossEncoder(conf.model_name)
+        cross_encoder = cross_encoder_cls(conf.model_name)
         self._rerankers[name] = CrossEncoderReranker(
             CrossEncoderRerankerParams(
                 cross_encoder=cross_encoder, max_input_length=conf.max_input_length

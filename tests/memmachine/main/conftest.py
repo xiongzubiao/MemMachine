@@ -167,36 +167,44 @@ def reranker_config(request) -> tuple[str, RerankersConf]:
 
 
 @pytest.fixture(scope="session")
-def databases_config(
-    pg_server, tmp_path_factory
-) -> tuple[dict[str, str], DatabasesConf]:
-    postgres_id = "postgres_memmachine"
-    sqlite_id = "sqlite_memmachine"
-    sqlite_path = Path(tmp_path_factory.mktemp("vector_graph_store")) / "graph.db"
+def databases_config(tmp_path_factory) -> tuple[dict[str, str], DatabasesConf]:
+    profile_id = "profile_storage"
+    profile_path = Path(tmp_path_factory.mktemp("profile_storage")) / "profile.db"
+    graph_id = "sqlite_memmachine"
+    graph_path = Path(tmp_path_factory.mktemp("vector_graph_store")) / "graph.db"
+    chroma_id = "chroma_memmachine"
+    chroma_path = Path(tmp_path_factory.mktemp("semantic_chroma"))
 
     databases = DatabasesConf.parse(
         {
             "databases": {
-                postgres_id: {
-                    "provider": "postgres",
-                    "config": {
-                        "host": pg_server["host"],
-                        "port": pg_server["port"],
-                        "user": pg_server["user"],
-                        "password": pg_server["password"],
-                        "db_name": pg_server["database"],
-                    },
-                },
-                sqlite_id: {
+                profile_id: {
                     "provider": "sqlite",
                     "config": {
-                        "path": str(sqlite_path),
+                        "path": str(profile_path),
+                    },
+                },
+                graph_id: {
+                    "provider": "sqlite",
+                    "config": {
+                        "path": str(graph_path),
+                    },
+                },
+                chroma_id: {
+                    "provider": "chroma",
+                    "config": {
+                        "path": str(chroma_path),
+                        "collection_prefix": "test",
                     },
                 },
             }
         }
     )
-    return {"postgres": postgres_id, "sqlite": sqlite_id}, databases
+    return {
+        "profile": profile_id,
+        "graph": graph_id,
+        "chroma": chroma_id,
+    }, databases
 
 
 @pytest.fixture(scope="session")
@@ -232,13 +240,14 @@ def memmachine_config(
     reranker_id, _ = reranker_config
     database_ids, _ = databases_config
 
-    postgres_db = database_ids["postgres"]
-    sqlite_db = database_ids["sqlite"]
+    profile_db = database_ids["profile"]
+    graph_db = database_ids["graph"]
+    chroma_db = database_ids["chroma"]
 
     return Configuration(
         episodic_memory=EpisodicMemoryConfPartial(
             long_term_memory=LongTermMemoryConfPartial(
-                vector_graph_store=sqlite_db,
+                vector_graph_store=graph_db,
                 embedder=embedder_id,
                 reranker=reranker_id,
             ),
@@ -247,15 +256,15 @@ def memmachine_config(
             ),
         ),
         semantic_memory=SemanticMemoryConf(
-            database=postgres_db,
+            database=chroma_db,
             llm_model=language_model_id,
             embedding_model=embedder_id,
         ),
         logging=LogConf(),
         prompt=PromptConf(),
-        session_manager=SessionManagerConf(database=postgres_db),
+        session_manager=SessionManagerConf(database=profile_db),
         resources=resources_config,
-        episode_store=EpisodeStoreConf(database=postgres_db),
+        episode_store=EpisodeStoreConf(database=profile_db),
     )
 
 
@@ -283,7 +292,7 @@ async def session_data(memmachine: MemMachine):
         user_profile_id: SetIdT | None
         session_id: SetIdT | None
         role_profile_id: SetIdT | None
-        session_key: str | None
+        session_key: str
 
     s_data = _SessionData(
         user_profile_id="test_user",

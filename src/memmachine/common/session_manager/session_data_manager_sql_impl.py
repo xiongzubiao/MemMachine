@@ -3,7 +3,7 @@
 import json
 import os
 import pickle
-from typing import Annotated, Any
+from typing import Any, cast
 
 from sqlalchemy import (
     JSON,
@@ -19,8 +19,8 @@ from sqlalchemy import (
     text,
     update,
 )
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, async_sessionmaker
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -39,12 +39,7 @@ class Base(DeclarativeBase):  # pylint: disable=too-few-public-methods
     """Base class for declarative class definitions."""
 
 
-JSON_AUTO = JSON().with_variant(JSONB, "postgresql")
-
-IntColumn = Annotated[int, mapped_column(Integer)]
-StringKeyColumn = Annotated[str, mapped_column(String, primary_key=True)]
-StringColumn = Annotated[str, mapped_column(String)]
-JSONColumn = Annotated[dict, mapped_column(JSON_AUTO)]
+JSON_AUTO = JSON()
 
 
 class SessionDataManagerSQL(SessionDataManager):
@@ -54,12 +49,12 @@ class SessionDataManagerSQL(SessionDataManager):
         """ORM model for a session configuration (session_key is the primary key)."""
 
         __tablename__ = "sessions"
-        session_key: Mapped[StringKeyColumn]
-        timestamp: Mapped[IntColumn]
-        configuration: Mapped[JSONColumn]
-        param_data: Mapped[JSONColumn]
-        description: Mapped[StringColumn]
-        user_metadata: Mapped[JSONColumn]
+        session_key: Mapped[str] = mapped_column(String, primary_key=True)
+        timestamp: Mapped[int] = mapped_column(Integer)
+        configuration: Mapped[dict[str, object]] = mapped_column(JSON_AUTO)
+        param_data: Mapped[dict[str, object]] = mapped_column(JSON_AUTO)
+        description: Mapped[str] = mapped_column(String)
+        user_metadata: Mapped[dict[str, object]] = mapped_column(JSON_AUTO)
         __table_args__ = (PrimaryKeyConstraint("session_key"),)
         short_term_memory_data = relationship(
             "ShortTermMemoryData",
@@ -70,11 +65,11 @@ class SessionDataManagerSQL(SessionDataManager):
         """ORM model for short term memory data (session_key is the primary key)."""
 
         __tablename__ = "short_term_memory_data"
-        session_key: Mapped[StringKeyColumn]
-        summary: Mapped[StringColumn]
-        last_seq: Mapped[IntColumn]
-        episode_num: Mapped[IntColumn]
-        timestamp: Mapped[IntColumn]
+        session_key: Mapped[str] = mapped_column(String, primary_key=True)
+        summary: Mapped[str] = mapped_column(String)
+        last_seq: Mapped[int] = mapped_column(Integer)
+        episode_num: Mapped[int] = mapped_column(Integer)
+        timestamp: Mapped[int] = mapped_column(Integer)
         __table_args__ = (
             PrimaryKeyConstraint("session_key"),
             ForeignKeyConstraint(["session_key"], ["sessions.session_key"]),
@@ -94,7 +89,7 @@ class SessionDataManagerSQL(SessionDataManager):
     async def create_tables(self) -> None:
         """Create the necessary tables in the database."""
 
-        def _check_migration_needed(conn: AsyncConnection) -> bool:
+        def _check_migration_needed(conn: Connection) -> bool:
             inspector = inspect(conn)
             assert inspector is not None
 
@@ -235,7 +230,9 @@ class SessionDataManagerSQL(SessionDataManager):
             session = sessions.scalars().first()
             if session is None:
                 return None
-            param = EpisodicMemoryConf(**session.param_data)
+            param = EpisodicMemoryConf(
+                **cast(dict[str, Any], session.param_data),
+            )
 
             return SessionDataManager.SessionInfo(
                 configuration=session.configuration,
@@ -251,9 +248,6 @@ class SessionDataManagerSQL(SessionDataManager):
     ) -> ColumnElement[Any]:
         if self._engine.dialect.name == "mysql":
             return func.json_contains(column, func.json_quote(func.json(filters)))
-
-        if self._engine.dialect.name == "postgresql":
-            return column.op("@>")(filters)
 
         if self._engine.dialect.name == "sqlite":
             # SQLite has no JSON_CONTAINS; emulate using json_extract

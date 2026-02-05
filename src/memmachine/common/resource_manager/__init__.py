@@ -10,6 +10,7 @@ from memmachine.common.metrics_factory import MetricsFactory
 from memmachine.common.reranker import Reranker
 from memmachine.common.session_manager.session_data_manager import SessionDataManager
 from memmachine.common.vector_graph_store import VectorGraphStore
+from memmachine.common.configuration.database_conf import ChromaConf
 
 
 @runtime_checkable
@@ -30,6 +31,10 @@ class CommonResourceManager(Protocol):
 
     async def get_vector_graph_store(self, name: str) -> VectorGraphStore:
         """Return the vector graph store by name."""
+        raise NotImplementedError
+
+    def get_vector_db_conf(self, name: str) -> ChromaConf:
+        """Return the vector database configuration by name."""
         raise NotImplementedError
 
     async def get_embedder(self, name: str, validate: bool = False) -> Embedder:

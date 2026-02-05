@@ -2,11 +2,15 @@ import logging
 import os
 from datetime import UTC, datetime
 
-import asyncpg
+import aiosqlite
 import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from query_constructor import CRMQueryConstructor
+
+try:
+    from .query_constructor import CRMQueryConstructor
+except ImportError:
+    from examples.v1.crm.query_constructor import CRMQueryConstructor
 
 logger = logging.getLogger(__name__)
 
@@ -15,27 +19,32 @@ load_dotenv()
 MEMORY_BACKEND_URL = os.getenv("MEMORY_BACKEND_URL", "http://localhost:8080")
 CRM_PORT = int(os.getenv("CRM_PORT", "8000"))
 
-DB_CONFIG = {
-    "host": os.getenv("POSTGRES_HOST", "localhost"),
-    "port": int(os.getenv("POSTGRES_PORT", 5432)),
-    "user": os.getenv("POSTGRES_USER"),
-    "password": os.getenv("POSTGRES_PASSWORD"),
-    "database": os.getenv("POSTGRES_DB"),
-}
+CRM_DEDUPE_DB = os.getenv("CRM_DEDUPE_DB", "crm_dedupe.db")
 
 app = FastAPI(title="Server", description="Simple middleware")
 
 query_constructor = CRMQueryConstructor()
 
-db_pool = None
+
+async def _ensure_dedupe_table(conn: aiosqlite.Connection) -> None:
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS slack_dedupe (
+            slack_message_id TEXT PRIMARY KEY
+        )
+        """
+    )
+    await conn.commit()
 
 
-async def get_db_pool():
-    """Get or create database connection pool"""
-    global db_pool
-    if db_pool is None:
-        db_pool = await asyncpg.create_pool(**DB_CONFIG)
-    return db_pool
+async def mark_slack_message_processed(slack_message_id: str) -> None:
+    async with aiosqlite.connect(CRM_DEDUPE_DB) as conn:
+        await _ensure_dedupe_table(conn)
+        await conn.execute(
+            "INSERT OR IGNORE INTO slack_dedupe (slack_message_id) VALUES (?)",
+            (slack_message_id,),
+        )
+        await conn.commit()
 
 
 async def is_slack_message_processed(
@@ -45,17 +54,19 @@ async def is_slack_message_processed(
 ) -> bool:
     """Check if Slack message was already processed by querying history table metadata"""
     try:
-        pool = await get_db_pool()
-        async with pool.acquire() as conn:
-            result = await conn.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM history WHERE metadata->>'slack_message_id' = $1)",
-                slack_message_id,
-            )
+        async with aiosqlite.connect(CRM_DEDUPE_DB) as conn:
+            await _ensure_dedupe_table(conn)
+            async with conn.execute(
+                "SELECT 1 FROM slack_dedupe WHERE slack_message_id = ?",
+                (slack_message_id,),
+            ) as cursor:
+                result = await cursor.fetchone()
             if result:
                 print(
-                    f"[CRM] Found duplicate slack_message_id in history table metadata: {slack_message_id}",
+                    "[CRM] Found duplicate slack_message_id in dedupe store: "
+                    f"{slack_message_id}",
                 )
-            return result
+            return result is not None
     except Exception:
         logger.exception("Error occurred in is_slack_message_processed")
         return False
@@ -98,6 +109,8 @@ async def store_data(user_id: str, query: str, slack_message_id: str | None):
             timeout=1000,
         )
         response.raise_for_status()
+        if slack_message_id:
+            await mark_slack_message_processed(slack_message_id)
         return {"status": "success", "data": response.json()}
     except Exception:
         logger.exception("Error occurred in /memory store_data")
@@ -289,16 +302,9 @@ async def store_and_search_data(user_id: str, query: str):
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    """Initialize database connection pool on startup"""
-    await get_db_pool()
-
-
-@app.on_event("shutdown")
-async def shutdown_event() -> None:
-    """Clean up database connection pool on shutdown"""
-    global db_pool
-    if db_pool:
-        await db_pool.close()
+    """Initialize the dedupe store on startup."""
+    async with aiosqlite.connect(CRM_DEDUPE_DB) as conn:
+        await _ensure_dedupe_table(conn)
 
 
 if __name__ == "__main__":

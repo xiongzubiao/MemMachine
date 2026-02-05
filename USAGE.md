@@ -7,7 +7,7 @@ This guide helps AI coding assistants (like Cursor, Claude Code, Codex, etc.) un
 MemMachine provides two types of memory:
 
 - **Episodic Memory**: Stores conversational episodes (messages, interactions) in a graph database (Neo4j). Supports both short-term (recent context) and long-term (summarized) storage.
-- **Semantic Memory**: User-specific facts, preferences, and knowledge extracted from conversations. Uses vector embeddings for semantic search and is stored in PostgreSQL.
+- **Semantic Memory**: User-specific facts, preferences, and knowledge extracted from conversations. Uses vector embeddings for semantic search and is stored in Chroma.
 
 ## Installation
 
@@ -26,7 +26,7 @@ The easiest way to get started is using Docker with the provided compose script:
 # - Create .env file if needed
 # - Generate cfg.yml (or configuration.yml) with provider choice (OpenAI, Bedrock, or Ollama)
 # - Set up API keys
-# - Start all services (MemMachine, Neo4j, PostgreSQL)
+# - Start services (MemMachine, and Neo4j if configured)
 
 # Other useful commands:
 ./memmachine-compose.sh stop      # Stop services
@@ -604,7 +604,7 @@ except requests.HTTPError as e:
 
 MemMachine is configured via a YAML file. The file can be named `cfg.yml` (recommended in documentation) or `configuration.yml` (used in Docker setups). Key sections include:
 
-- **`resources.databases`**: Database connections (Neo4j for episodic, PostgreSQL for semantic)
+- **`resources.databases`**: Database connections (SQLite for profile/session, Chroma for semantic, Neo4j for episodic if configured)
 - **`resources.embedders`**: Embedding model configurations (OpenAI, AWS Bedrock, Ollama, etc.)
 - **`resources.language_models`**: LLM configurations for summarization and extraction
 - **`episodic_memory`**: Episodic memory settings (short-term and long-term)

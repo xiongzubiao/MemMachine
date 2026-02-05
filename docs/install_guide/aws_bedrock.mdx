@@ -98,14 +98,14 @@ Now, reference these resource IDs in your `episodic_memory` and `semantic_memory
 episodic_memory:
   enabled: true
   long_term_memory:
-    vector_graph_store: my-neo4j-db # Assumes you defined this in resources.databases
+    vector_graph_store: profile_storage # Assumes you defined this in resources.databases
     embedder: my-bedrock-embedder
     reranker: my-bedrock-reranker
   short_term_memory:
     llm_model: my-bedrock-llm
 
 semantic_memory:
-  database: my-postgres-db # Assumes you defined this in resources.databases
+  database: semantic_chroma # Assumes you defined this in resources.databases
   llm_model: my-bedrock-llm
   embedding_model: my-bedrock-embedder
 ```

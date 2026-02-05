@@ -25,7 +25,6 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, mapped_column
@@ -57,7 +56,7 @@ class BaseEpisodeStore(DeclarativeBase):
     """Base class for SQLAlchemy Episode store."""
 
 
-JSON_AUTO = JSON().with_variant(JSONB, "postgresql")
+JSON_AUTO = JSON()
 
 T = TypeVar("T")
 

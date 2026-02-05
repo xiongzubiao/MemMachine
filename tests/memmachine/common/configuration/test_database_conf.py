@@ -1,8 +1,8 @@
 import pytest
 import yaml
-from pydantic import SecretStr
 
 from memmachine.common.configuration.database_conf import (
+    ChromaConf,
     DatabasesConf,
     SqlAlchemyConf,
     SupportedDB,
@@ -10,13 +10,7 @@ from memmachine.common.configuration.database_conf import (
 
 
 def test_parse_supported_db_enums():
-    assert SupportedDB.from_provider("postgres") == SupportedDB.POSTGRES
     assert SupportedDB.from_provider("sqlite") == SupportedDB.SQLITE
-
-    pg_db = SupportedDB.POSTGRES
-    assert pg_db.conf_cls == SqlAlchemyConf
-    assert pg_db.dialect == "postgresql"
-    assert pg_db.driver == "asyncpg"
 
     sqlite_db = SupportedDB.SQLITE
     assert sqlite_db.conf_cls == SqlAlchemyConf
@@ -44,23 +38,20 @@ def test_invalid_provider_raises():
 
 
 @pytest.fixture
-def db_conf_dict() -> dict:
+def db_conf_dict() -> dict[str, object]:
     return {
         "databases": {
-            "main_postgres": {
-                "provider": "postgres",
-                "config": {
-                    "host": "db.example.com",
-                    "port": 5432,
-                    "user": "admin",
-                    "password": "pwd",
-                    "db_name": "test_db",
-                },
-            },
             "local_sqlite": {
                 "provider": "sqlite",
                 "config": {
                     "path": "local.db",
+                },
+            },
+            "semantic_chroma": {
+                "provider": "chroma",
+                "config": {
+                    "path": "/tmp/chroma",
+                    "collection_prefix": "memmachine",
                 },
             },
         },
@@ -76,19 +67,6 @@ def clear_env(monkeypatch):
 def test_parse_valid_storage_dict(db_conf_dict):
     storage_conf = DatabasesConf.parse(db_conf_dict)
 
-    # Postgres check
-    pg_conf = storage_conf.relational_db_confs["main_postgres"]
-    assert isinstance(pg_conf, SqlAlchemyConf)
-    assert pg_conf.dialect == "postgresql"
-    assert pg_conf.driver == "asyncpg"
-    assert pg_conf.host == "db.example.com"
-    assert pg_conf.user == "admin"
-    assert pg_conf.password == SecretStr("pwd")
-    assert pg_conf.db_name == "test_db"
-    assert pg_conf.port == 5432
-    assert pg_conf.path is None
-    assert pg_conf.uri == "postgresql+asyncpg://admin:pwd@db.example.com:5432/test_db"
-
     # Sqlite check
     sqlite_conf = storage_conf.relational_db_confs["local_sqlite"]
     assert sqlite_conf.dialect == "sqlite"
@@ -97,23 +75,17 @@ def test_parse_valid_storage_dict(db_conf_dict):
     assert isinstance(sqlite_conf, SqlAlchemyConf)
     assert sqlite_conf.uri == "sqlite+aiosqlite:///local.db"
 
-
-def test_read_db_password_from_env(monkeypatch, db_conf_dict):
-    monkeypatch.setenv("MY_DB_PASSWORD", "env-db-password")
-    db_conf_dict["databases"]["main_postgres"]["config"]["password"] = (
-        "${MY_DB_PASSWORD}"
-    )
-    storage_conf = DatabasesConf.parse(db_conf_dict)
-
-    pg_conf = storage_conf.relational_db_confs["main_postgres"]
-    assert pg_conf.password == SecretStr("env-db-password")
+    chroma_conf = storage_conf.vector_db_confs["semantic_chroma"]
+    assert isinstance(chroma_conf, ChromaConf)
+    assert chroma_conf.path == "/tmp/chroma"
+    assert chroma_conf.collection_prefix == "memmachine"
 
 
 def test_parse_unknown_provider_raises():
     input_dict = {
         "databases": {"bad_storage": {"provider": "unknown_db", "host": "localhost"}},
     }
-    message = "Supported providers are: postgres, sqlite"
+    message = "Supported providers are: sqlite, chroma"
     with pytest.raises(ValueError, match=message):
         DatabasesConf.parse(input_dict)
 
@@ -122,6 +94,7 @@ def test_parse_empty_storage_returns_empty_conf():
     input_dict = {"databases": {}}
     storage_conf = DatabasesConf.parse(input_dict)
     assert storage_conf.relational_db_confs == {}
+    assert storage_conf.vector_db_confs == {}
 
 
 def test_serialize_deserialize_database_conf(db_conf_dict):

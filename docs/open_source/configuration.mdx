@@ -68,7 +68,7 @@ To see a complete example of a potential `cfg.yml` file, check out [GPU-based Sa
     ```yaml
       episodic_memory:
         long_term_memory:
-          vector_graph_store: my-neo4j-store
+          vector_graph_store: profile_storage
           embedder: my-openai-embedder
           reranker: my-rrf-reranker
         short_term_memory:
@@ -80,7 +80,7 @@ To see a complete example of a potential `cfg.yml` file, check out [GPU-based Sa
       ```yaml
       episodic_memory:
         long_term_memory: # Configuration for long-term memory
-          vector_graph_store: my-neo4j-store # ID of the VectorGraphStore from 'resources.databases'
+          vector_graph_store: profile_storage # ID of the VectorGraphStore from 'resources.databases'
           embedder: my-openai-embedder # ID of the Embedder from 'resources.embedders'
           reranker: my-rrf-reranker # ID of the Reranker from 'resources.rerankers'
         short_term_memory: # Configuration for short-term memory
@@ -108,7 +108,7 @@ To see a complete example of a potential `cfg.yml` file, check out [GPU-based Sa
       semantic_memory:
         llm_model: my-semantic-llm
         embedding_model: my-openai-embedder
-        database: my-postgres-db
+        database: semantic_chroma
       ```
       </Tab>
       <Tab title="With Comments">
@@ -116,7 +116,7 @@ To see a complete example of a potential `cfg.yml` file, check out [GPU-based Sa
       semantic_memory:
         llm_model: my-semantic-llm # ID of the Language Model from 'resources.language_models'
         embedding_model: my-openai-embedder # ID of the Embedder from 'resources.embedders'
-        database: my-postgres-db # ID of the database from 'resources.databases'
+        database: semantic_chroma # ID of the database from 'resources.databases'
       ```
       </Tab>
     </Tabs>
@@ -182,30 +182,21 @@ To see a complete example of a potential `cfg.yml` file, check out [GPU-based Sa
     This section centralizes the definitions of various external resources, which can then be referenced by ID in other parts of the configuration. 
 
     ### Databases
-    Defines connections to various database backends (Neo4j, PostgreSQL, SQLite).
+    Defines connections to various database backends (SQLite, Chroma).
     <Tabs>
     <Tab title="Parameters">
       ```yaml
       resources:
         databases:
           profile_storage:
-            provider: postgres
-            config:
-              host: localhost
-              port: 5432
-              user: postgres
-              db_name: postgres
-              password: <YOUR_PASSWORD_HERE>
-          my_storage_id:
-            provider: neo4j
-            config:
-              uri: 'bolt://localhost:7687'
-              username: neo4j
-              password: <YOUR_PASSWORD_HERE>
-          sqlite_test:
             provider: sqlite
             config:
-              path: sqlite_test.db
+              path: memmachine_profile.db
+          semantic_chroma:
+            provider: chroma
+            config:
+              path: memmachine_semantic_chroma
+              collection_prefix: memmachine
       ```
     </Tab>
     <Tab title="With Comments">
@@ -213,41 +204,24 @@ To see a complete example of a potential `cfg.yml` file, check out [GPU-based Sa
     resources:
         databases:
           profile_storage:
-            provider: postgres # The database provider type: `neo4j`, `postgres`, or `sqlite`
+            provider: sqlite # The database provider type: `sqlite` or `chroma`
             config: # A dictionary containing provider-specific configuration
-              host: localhost # Hostname for the database
-              port: 5432 # Port number for the database connection
-              user: postgres # Username for database authentication
-              db_name: postgres # Database name
-              password: <YOUR_PASSWORD_HERE> # Password for database authentication
-          my_storage_id: # he specific configuration for the system's internal graph store
-            provider: neo4j #The database provider type: `neo4j`, `postgres`, or `sqlite`
+              path: memmachine_profile.db # The path for the given database
+          semantic_chroma:
+            provider: chroma # The database provider type: `sqlite` or `chroma`
             config: # A dictionary containing provider-specific configuration
-              uri: 'bolt://localhost:7687' # The URI for the given database
-              username: neo4j. # Username for internal graph store authentication
-              password: <YOUR_PASSWORD_HERE> # Password for graph store authentication
-          sqlite_test: # The configuration for the SQLite database used for testing
-            provider: sqlite #The database provider type: `neo4j`, `postgres`, or `sqlite`
-            config: # A dictionary containing provider-specific configuration
-              path: sqlite_test.db. # The path for the given database
+              path: memmachine_semantic_chroma # The path for the Chroma store
+              collection_prefix: memmachine # Prefix for Chroma collections
       ```
     </Tab>
     </Tabs>
       **Parameter Descriptions:**
       | Parameter     | Description                                                          | Default     |
       |---------------|----------------------------------------------------------------------|-------------|
-      | `provider`    | The database provider type: `neo4j`, `postgres`, or `sqlite`.        | *Required*  |
+      | `provider`    | The database provider type: `sqlite` or `chroma`.                    | *Required*  |
       | `config`      | A dictionary containing provider-specific configuration.             | *Required*  |
-      | `config.host` | Hostname for the database (e.g., `localhost`).                       | Depends on provider |
-      | `config.port` | Port number for the database connection.                             | Depends on provider |
-      | `config.user` | Username for database authentication.                                | Depends on provider |
-      | `config.db_name`| Database name (for `postgres`).                                    | Depends on provider |
-      | `config.password`| Password for database authentication.                             | Depends on provider |
-      | `config.uri`  | The URI for the given database.                                      | Depends on provider |
-      | `config.path`  | The path for the given database.                                    | Depends on provider |
-      | `config.username` | Username for internal graph store authentication.                | Depends on provider |
-      | `my_storage_id` | The specific configuration for the system's internal graph store.  | *Required*  |
-      | `sqlite_test` | The configuration for the SQLite database used for testing.          | *Required*  |
+      | `config.path` | The path for the given database.                                     | Depends on provider |
+      | `config.collection_prefix` | Prefix for Chroma collections.                          | `memmachine` |
 
 
   ### Embedders

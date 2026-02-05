@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock
 from unittest.mock import MagicMock
 
 import pytest
-from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from memmachine.common.configuration.database_conf import DatabasesConf, SqlAlchemyConf
@@ -16,15 +15,6 @@ def mock_conf():
     """Mock StoragesConf with dummy connection configurations."""
     conf = MagicMock(spec=DatabasesConf)
     conf.relational_db_confs = {
-        "pg1": SqlAlchemyConf(
-            dialect="postgresql",
-            driver="asyncpg",
-            host="localhost",
-            port=5432,
-            user="user",
-            password=SecretStr("password"),
-            db_name="testdb",
-        ),
         "sqlite1": SqlAlchemyConf(
             dialect="sqlite",
             driver="aiosqlite",
@@ -74,4 +64,3 @@ async def test_build_all_without_validation(mock_conf):
     await builder.build_all(validate=False)
 
     assert "sqlite1" in builder.sql_engines
-    assert "pg1" in builder.sql_engines

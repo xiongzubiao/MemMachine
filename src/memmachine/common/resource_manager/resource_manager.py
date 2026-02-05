@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from memmachine.common.configuration import Configuration
 from memmachine.common.configuration.mixin_confs import MetricsFactoryIdMixin
+from memmachine.common.configuration.database_conf import ChromaConf
 from memmachine.common.embedder import Embedder
 from memmachine.common.episode_store import CountCachingEpisodeStorage, EpisodeStorage
 from memmachine.common.episode_store.episode_sqlalchemy_store import (
@@ -102,6 +103,10 @@ class ResourceManagerImpl:
     async def get_vector_graph_store(self, name: str) -> VectorGraphStore:
         """Return a vector graph store by name."""
         return await self._database_manager.get_vector_graph_store(name)
+
+    def get_vector_db_conf(self, name: str) -> ChromaConf:
+        """Return the vector database configuration by name."""
+        return self._database_manager.get_vector_db_conf(name)
 
     async def get_embedder(self, name: str, validate: bool = False) -> Embedder:
         """Return an embedder by name."""

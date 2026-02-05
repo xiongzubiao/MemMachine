@@ -77,6 +77,8 @@ def test_update_episodic_memory_conf(
     )
 
     updated = specific.merge(base)
+    assert updated.long_term_memory is not None
+    assert updated.short_term_memory is not None
     assert updated.long_term_memory.embedder == "embedder_v2"
     assert updated.long_term_memory.reranker == "reranker_v1"
     assert updated.short_term_memory.session_key == "session_123"
@@ -117,9 +119,11 @@ def test_load_sample_cpu_config():
         ].model
         == "llama3"
     )
-    postgres_conf = resources_conf.databases.relational_db_confs["profile_storage"]
-    assert postgres_conf.password == SecretStr("<YOUR_PASSWORD_HERE>")
-    assert conf.semantic_memory.database == "profile_storage"
+    sqlite_conf = resources_conf.databases.relational_db_confs["profile_storage"]
+    assert sqlite_conf.path == "memmachine_profile.db"
+    chroma_conf = resources_conf.databases.vector_db_confs["semantic_chroma"]
+    assert chroma_conf.path == "memmachine_semantic_chroma"
+    assert conf.semantic_memory.database == "semantic_chroma"
     embedder_conf = resources_conf.embedders.openai["openai_embedder"]
     assert embedder_conf.api_key == SecretStr("<YOUR_API_KEY>")
     reranker_conf = resources_conf.rerankers.amazon_bedrock["aws_reranker_id"]

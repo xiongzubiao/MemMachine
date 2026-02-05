@@ -64,6 +64,7 @@ def mock_resource_manager():
     # Mock database manager
     db_manager = MagicMock()
     db_manager.conf.relational_db_confs = {"sqlite-db": MagicMock(dialect="sqlite")}
+    db_manager.conf.vector_db_confs = {}
     resource_manager.database_manager = db_manager
 
     # Mock config for persistence

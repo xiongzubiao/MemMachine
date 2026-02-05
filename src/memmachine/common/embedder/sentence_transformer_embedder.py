@@ -3,12 +3,11 @@
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 from uuid import uuid4
 
 import numpy as np
 from pydantic import BaseModel, Field, InstanceOf
-from sentence_transformers import SentenceTransformer
 
 from memmachine.common.data_types import ExternalServiceAPIError, SimilarityMetric
 from memmachine.common.utils import chunk_text_balanced, unflatten_like
@@ -18,6 +17,23 @@ from .embedder import Embedder
 logger = logging.getLogger(__name__)
 
 
+@runtime_checkable
+class SentenceTransformerProtocol(Protocol):
+    """Runtime-checkable subset of SentenceTransformer interface."""
+
+    similarity_fn_name: str
+
+    def get_sentence_embedding_dimension(self) -> int | None: ...
+
+    def encode(
+        self,
+        sentences: list[Any],
+        *,
+        prompt_name: str | None = None,
+        show_progress_bar: bool = False,
+    ) -> Any: ...
+
+
 class SentenceTransformerEmbedderParams(BaseModel):
     """Parameters for SentenceTransformerEmbedder."""
 
@@ -25,7 +41,7 @@ class SentenceTransformerEmbedderParams(BaseModel):
         ...,
         description="The name of the sentence transformer model.",
     )
-    sentence_transformer: InstanceOf[SentenceTransformer] = Field(
+    sentence_transformer: InstanceOf[SentenceTransformerProtocol] = Field(
         ...,
         description="The sentence transformer model to use for generating embeddings.",
     )
@@ -48,7 +64,7 @@ class SentenceTransformerEmbedder(Embedder):
 
         self._dimensions = (
             self._sentence_transformer.get_sentence_embedding_dimension()
-            or len(self._sentence_transformer.encode(""))
+            or len(self._sentence_transformer.encode([""])[0])
         )
         match self._sentence_transformer.similarity_fn_name:
             case "cosine":

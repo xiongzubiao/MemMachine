@@ -38,7 +38,7 @@ Slack Messages → Slack Server → CRM Server → Memory Backend → Database
 ## Prerequisites
 
 1. **Python Environment** (3.8+)
-2. **PostgreSQL Database** 
+2. **SQLite (local file) for dedupe storage**
 3. **Slack Bot Token**
 4. **OpenAI API Key** (for AI responses)
 5. **Memory Backend** (MemMachine system)
@@ -49,12 +49,8 @@ Slack Messages → Slack Server → CRM Server → Memory Backend → Database
 Create or update `.env` file in the project root with these variables:
 
 ```bash
-# Database Configuration
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_USER=your_db_user
-POSTGRES_PASSWORD=your_db_password
-POSTGRES_DB=your_database_name
+# Dedupe Store (SQLite)
+CRM_DEDUPE_DB=crm_dedupe.db
 
 # Slack Configuration
 SLACK_BOT_TOKEN=xoxb-your-slack-bot-token
@@ -83,15 +79,13 @@ LOG_LEVEL=INFO
 
 ## Step 2: Database Setup
 
-1. **Start PostgreSQL** and create a database
-2. **Run the MemMachine schema** to set up the required tables
-3. **The system automatically handles** slack message deduplication using metadata fields
+The CRM dedupe store uses a local SQLite file and creates its table automatically on first use.
 
 ## Step 3: Install Dependencies
 
 ```bash
 # Install required Python packages
-pip install fastapi uvicorn httpx asyncpg slack-sdk openai python-dotenv numpy
+pip install fastapi uvicorn httpx aiosqlite slack-sdk openai python-dotenv numpy
 ```
 
 ## Step 4: Slack Bot Setup
@@ -277,8 +271,8 @@ Skipped (duplicates): 0 messages
 ### Common Issues:
 
 1. **Database Connection Error**
-   - Check PostgreSQL is running
-   - Verify database credentials in `.env`
+   - Check the `CRM_DEDUPE_DB` path is writable
+   - Remove the file if it is corrupted and let the app recreate it
 
 2. **Slack API Error**
    - Verify bot token and signing secret
