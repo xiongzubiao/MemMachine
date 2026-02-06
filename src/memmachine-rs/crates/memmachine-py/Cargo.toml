@@ -1,0 +1,21 @@
+[package]
+name = "memmachine-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Python bindings for MemMachine core via PyO3"
+
+[lib]
+name = "memmachine_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+memmachine-core.workspace = true
+pyo3 = { workspace = true, features = ["extension-module"] }
+pyo3-async-runtimes = { workspace = true, features = ["tokio-runtime"] }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
