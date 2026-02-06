@@ -19,7 +19,7 @@ from memmachine.common.configuration.episodic_config import (
 from memmachine.common.configuration.language_model_conf import LanguageModelsConf
 from memmachine.common.configuration.log_conf import LogConf
 from memmachine.common.configuration.mixin_confs import (
-    ApiKeyMixin,
+    AuthMixin,
     YamlSerializableMixin,
 )
 from memmachine.common.configuration.reranker_conf import RerankersConf
@@ -39,18 +39,32 @@ YamlValue = dict[str, "YamlValue"] | list["YamlValue"] | str | int | float | boo
 logger = logging.getLogger(__name__)
 
 
-def _is_openai_incomplete(conf: ApiKeyMixin) -> bool:
+def _is_openai_incomplete(conf: AuthMixin) -> bool:
     """Check if an OpenAI-based config has empty credentials and no base_url."""
+    # API key takes precedence over OAuth
     api_key = getattr(conf, "api_key", None)
-    base_url = getattr(conf, "base_url", None)
-    if api_key is None:
+    if api_key is not None:
+        try:
+            api_key_value = api_key.get_secret_value()
+        except Exception:
+            return False
+        if api_key_value != "":
+            return False
+
+    issuer_url = getattr(conf, "issuer_url", None)
+    client_id = getattr(conf, "client_id", None)
+    device_code = getattr(conf, "device_code", None)
+    if issuer_url is None or client_id is None or device_code is None:
         return False
     try:
-        api_key_value = api_key.get_secret_value()
+        client_id_value = client_id.get_secret_value()
+        device_code_value = device_code.get_secret_value()
     except Exception:
         return False
-    if api_key_value != "":
+    if client_id_value != "" or device_code_value != "":
         return False
+
+    base_url = getattr(conf, "base_url", None)
     return base_url is None or (isinstance(base_url, str) and not base_url)
 
 

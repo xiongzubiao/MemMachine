@@ -1,13 +1,23 @@
-"""Metrics configuration mixins."""
+"""Metrics and authentication configuration mixins."""
 
+import asyncio
 import os
 import re
 from datetime import timedelta
 from enum import Enum
-from typing import ClassVar, Self
+from typing import Any, Awaitable, Callable, ClassVar, Self
 
+import requests
 import yaml
-from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+from authlib.integrations.requests_client import OAuth2Session
+from pydantic import (
+    BaseModel,
+    Field,
+    PrivateAttr,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from memmachine.common.errors import InvalidPasswordError
 from memmachine.common.metrics_factory import MetricsFactory
@@ -175,11 +185,11 @@ class AWSCredentialsMixin(BaseModel, WithValueFromEnv):
         return self
 
 
-class ApiKeyMixin(BaseModel, WithValueFromEnv):
+class AuthMixin(BaseModel, WithValueFromEnv):
     """
-    Mixin for configurations that include an API key.
+    Mixin for configurations that include either an API key or OAuth credentials.
 
-    It reads the API key from environment variables if user
+    It reads credentials from environment variables if user
     specifies a pattern like $ENV_NAME in the value.
     """
 
@@ -188,12 +198,170 @@ class ApiKeyMixin(BaseModel, WithValueFromEnv):
         description="API key for authentication.  Can reference an environment variable using $ENV_NAME syntax.",
     )
 
+    issuer_url: str = Field(
+        default="",
+        description="OAuth issuer URL for authentication.  Can reference an environment variable using $ENV_NAME syntax.",
+    )
+    client_id: SecretStr = Field(
+        default=SecretStr(""),
+        description="OAuth client ID for authentication.  Can reference an environment variable using $ENV_NAME syntax.",
+    )
+    client_secret: SecretStr = Field(
+        default=SecretStr(""),
+        description="OAuth client secret for authentication.  Can reference an environment variable using $ENV_NAME syntax.",
+    )
+    refresh_token: SecretStr = Field(
+        default=SecretStr(""),
+        description="OAuth refresh token for authentication.  Can reference an environment variable using $ENV_NAME syntax.",
+    )
+
+    _oauth_session: OAuth2Session | None = PrivateAttr(default=None)
+
     @field_validator("api_key", mode="before")
     @classmethod
     def resolve_api_key(cls, v: SecretStr | str) -> SecretStr | str | None:
         """Resolve environment variable references in the API key."""
         v = cls._resolve_env(v)
         return SecretStr(v) if isinstance(v, str) else v
+
+    @field_validator("client_id", mode="before")
+    @classmethod
+    def resolve_client_id(cls, v: SecretStr | str) -> SecretStr | str | None:
+        """Resolve environment variable references in the OAuth client ID."""
+        v = cls._resolve_env(v)
+        return SecretStr(v) if isinstance(v, str) else v
+
+    @field_validator("client_secret", mode="before")
+    @classmethod
+    def resolve_client_secret(cls, v: SecretStr | str) -> SecretStr | str | None:
+        """Resolve environment variable references in the OAuth client secret."""
+        v = cls._resolve_env(v)
+        return SecretStr(v) if isinstance(v, str) else v
+
+    @field_validator("issuer_url", mode="before")
+    @classmethod
+    def resolve_issuer_url(cls, v: str) -> str:
+        """Resolve environment variable references in issuer URL."""
+        resolved = cls._resolve_env(v)
+        if isinstance(resolved, str):
+            return resolved
+        return v
+
+    @field_validator("refresh_token", mode="before")
+    @classmethod
+    def resolve_refresh_token(cls, v: SecretStr | str) -> SecretStr | str | None:
+        """Resolve environment variable references in the OAuth refresh token."""
+        v = cls._resolve_env(v)
+        return SecretStr(v) if isinstance(v, str) else v
+
+    @model_validator(mode="after")
+    def _validate_auth_mode(self) -> Self:
+        # API key takes precedence
+        if (
+            not self.api_key.get_secret_value()
+            and self.refresh_token.get_secret_value()
+        ):
+            if not self.client_id.get_secret_value():
+                raise ValueError(
+                    "OAuth client_id must be set when refresh_token is used"
+                )
+            if not self.issuer_url:
+                raise ValueError(
+                    "OAuth issuer_url must be set when refresh_token is used"
+                )
+
+        return self
+
+    def resolve_auth(self) -> str | Callable[[], Awaitable[str]] | None:
+        api_key = self.api_key.get_secret_value()
+        if api_key:
+            return api_key
+        refresh_token = self.refresh_token.get_secret_value()
+        if refresh_token:
+            return self.fetch_access_token
+        return None
+
+    async def _resolve_openid_config(self) -> dict[str, Any]:
+        metadata_url = f"{self.issuer_url.rstrip('/')}/.well-known/openid-configuration"
+
+        try:
+            response = await asyncio.to_thread(
+                requests.get,
+                metadata_url,
+                timeout=10,
+                headers={"Accept": "application/json"},
+            )
+        except requests.RequestException as exc:
+            raise RuntimeError(
+                f"OAuth metadata request failed for {metadata_url}"
+            ) from exc
+
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"Failed to load OAuth metadata from {metadata_url} (status {response.status_code})"
+            )
+
+        try:
+            metadata = response.json()
+        except ValueError as exc:
+            raise RuntimeError(
+                f"OAuth metadata from {metadata_url} is not valid JSON"
+            ) from exc
+
+        if not isinstance(metadata, dict):
+            raise TypeError(f"OAuth metadata from {metadata_url} is not a JSON object")
+
+        return metadata
+
+    async def _get_oauth_session(self) -> OAuth2Session:
+        if self._oauth_session is not None:
+            return self._oauth_session
+
+        openid_config = await self._resolve_openid_config()
+        token_endpoint = openid_config.get("token_endpoint")
+        if not token_endpoint:
+            raise RuntimeError("Token endpoint not found in OpenID configuration")
+
+        client_id = self.client_id.get_secret_value()
+        client_secret = self.client_secret.get_secret_value()
+        refresh_token = self.refresh_token.get_secret_value()
+
+        token_endpoint_auth_method = "none"
+        if client_secret:
+            token_endpoint_auth_method = "client_secret_post"
+
+        session = OAuth2Session(
+            client_id=client_id,
+            client_secret=client_secret or None,
+            token_endpoint_auth_method=token_endpoint_auth_method,
+            token_endpoint=token_endpoint,
+            token={"refresh_token": refresh_token, "token_type": "Bearer"},
+            default_timeout=10,
+        )
+
+        self._oauth_session = session
+        return session
+
+    async def fetch_access_token(self) -> str:
+        """Exchange or refresh OAuth tokens to obtain a valid access token."""
+        session = await self._get_oauth_session()
+        token_endpoint = session.metadata.get("token_endpoint")
+
+        if not session.token.get("access_token"):
+            await asyncio.to_thread(
+                session.refresh_token,
+                token_endpoint,
+                refresh_token=self.refresh_token.get_secret_value(),
+            )
+        else:
+            # Subsequent calls: auto-refresh if token expired
+            await asyncio.to_thread(session.ensure_active_token)
+
+        access_token = session.token.get("access_token")
+        if not access_token:
+            raise RuntimeError("OAuth session has no access token")
+
+        return access_token
 
 
 class YamlSerializableMixin(BaseModel):

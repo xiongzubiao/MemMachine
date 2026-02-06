@@ -191,7 +191,7 @@ class LanguageModelManager(BaseResourceManager[LanguageModel]):
         return OpenAIResponsesLanguageModel(
             OpenAIResponsesLanguageModelParams(
                 client=openai.AsyncOpenAI(
-                    api_key=conf.api_key.get_secret_value(),
+                    api_key=conf.resolve_auth(),
                     base_url=conf.base_url,
                 ),
                 model=conf.model,
@@ -214,7 +214,7 @@ class LanguageModelManager(BaseResourceManager[LanguageModel]):
         return OpenAIChatCompletionsLanguageModel(
             OpenAIChatCompletionsLanguageModelParams(
                 client=openai.AsyncOpenAI(
-                    api_key=conf.api_key.get_secret_value(),
+                    api_key=conf.resolve_auth(),
                     base_url=conf.base_url,
                 ),
                 model=conf.model,

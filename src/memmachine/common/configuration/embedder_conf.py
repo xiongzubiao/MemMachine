@@ -7,7 +7,7 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 
 from memmachine.common.configuration.mixin_confs import (
-    ApiKeyMixin,
+    AuthMixin,
     AWSCredentialsMixin,
     MetricsFactoryIdMixin,
     YamlSerializableMixin,
@@ -56,7 +56,7 @@ class AmazonBedrockEmbedderConf(YamlSerializableMixin, AWSCredentialsMixin):
     )
 
 
-class OpenAIEmbedderConf(MetricsFactoryIdMixin, YamlSerializableMixin, ApiKeyMixin):
+class OpenAIEmbedderConf(MetricsFactoryIdMixin, YamlSerializableMixin, AuthMixin):
     """Configuration for OpenAI embedding models."""
 
     model: str = Field(

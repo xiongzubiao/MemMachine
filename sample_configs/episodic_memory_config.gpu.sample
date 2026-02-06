@@ -61,6 +61,15 @@ resources:
         api_key: <YOUR_API_KEY>
         base_url: "https://api.openai.com/v1"
         dimensions: 1536
+    memmachine_platform_embedder:
+      provider: openai
+      config:
+        model: "text-embedding-3-small"
+        issuer_url: https://console.memmachine.ai/auth/realms/memmachine-platform
+        client_id: memmachine
+        refresh_token: <YOUR_REFRESH_TOKEN>
+        base_url: "https://aigw.memmachine.ai/v1"
+        dimensions: 1536
     aws_embedder_id:
       provider: 'amazon-bedrock'
       config:
@@ -90,6 +99,14 @@ resources:
         model: "gpt-4o-mini"
         api_key: <YOUR_API_KEY>
         base_url: "https://api.openai.com/v1"
+    memmachine_platform_model:
+      provider: openai-chat-completions
+      config:
+        model: "gpt-4o-mini"
+        issuer_url: https://console.memmachine.ai/auth/realms/memmachine-platform
+        client_id: memmachine
+        refresh_token: <YOUR_REFRESH_TOKEN>
+        base_url: "https://aigw.memmachine.ai/v1"
     aws_model:
       provider: "amazon-bedrock"
       config:

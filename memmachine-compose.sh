@@ -136,6 +136,12 @@ select_llm_model() {
             llm_model=$(echo "${llm_model:-gpt-4o-mini}" | tr -d '\n\r')
             print_success "Selected OpenAI LLM model: $llm_model" >&2
             ;;
+        "MEMMACHINE_PLATFORM")
+            print_prompt
+            read -p "Which MemMachine-Platform LLM model would you like to use? [gpt-4o-mini]: " llm_model
+            llm_model=$(echo "${llm_model:-gpt-4o-mini}" | tr -d '\n\r')
+            print_success "Selected MemMachine-Platform LLM model: $llm_model" >&2
+            ;;
         "BEDROCK")
             print_prompt
             read -p "Which AWS Bedrock LLM model would you like to use? [openai.gpt-oss-20b-1:0]: " llm_model
@@ -174,6 +180,12 @@ select_embedding_model() {
             read -p "Which OpenAI embedding model would you like to use? [text-embedding-3-small]: " embedding_model
             embedding_model=$(echo "${embedding_model:-text-embedding-3-small}" | tr -d '\n\r')
             print_success "Selected OpenAI embedding model: $embedding_model" >&2
+            ;;
+        "MEMMACHINE_PLATFORM")
+            print_prompt
+            read -p "Which MemMachine-Platform embedding model would you like to use? [text-embedding-3-small]: " embedding_model
+            embedding_model=$(echo "${embedding_model:-text-embedding-3-small}" | tr -d '\n\r')
+            print_success "Selected MemMachine-Platform embedding model: $embedding_model" >&2
             ;;
         "BEDROCK")
             print_prompt
@@ -218,6 +230,12 @@ generate_config_for_provider() {
         "OPENAI")
             local model_name="openai_model"
             local embedder_name="openai_embedder"
+            local model_field="model"
+            local embedder_field="model"
+            ;;
+        "MEMMACHINE_PLATFORM")
+            local model_name="memmachine_platform_model"
+            local embedder_name="memmachine_platform_embedder"
             local model_field="model"
             local embedder_field="model"
             ;;
@@ -496,15 +514,15 @@ check_config_file() {
             MEMMACHINE_IMAGE="memmachine/memmachine:latest-cpu"
         fi
 
-        # Ask user for provider path (OpenAI, Bedrock, Ollama or OpenAI-compatible)
+        # Ask user for provider path (OpenAI, MemMachine-Platform, Bedrock, Ollama or OpenAI-compatible)
         print_prompt
-        read -p "Which provider would you like to use? (OpenAI/Bedrock/Ollama/OpenAI-compatible) [OpenAI]: " provider_input
+        read -p "Which provider would you like to use? (OpenAI/MemMachine-Platform/Bedrock/Ollama/OpenAI-compatible) [OpenAI]: " provider_input
         # Clean the input and set default
         provider_input=$(echo "${provider_input:-OpenAI}" | tr -d '\n\r' | tr '[:lower:]' '[:upper:]' | tr '-' '_')
         local provider="$provider_input"
         
         # Validate provider selection
-        if [[ "$provider" != "OPENAI" && "$provider" != "BEDROCK" && "$provider" != "OLLAMA" && "$provider" != "OPENAI_COMPATIBLE" ]]; then
+        if [[ "$provider" != "OPENAI" && "$provider" != "MEMMACHINE_PLATFORM" && "$provider" != "BEDROCK" && "$provider" != "OLLAMA" && "$provider" != "OPENAI_COMPATIBLE" ]]; then
             print_warning "Invalid provider selection: '$provider'. Defaulting to OpenAI."
             provider="OPENAI"
         fi
@@ -600,6 +618,43 @@ set_provider_api_keys() {
             fi
         fi
 
+        # Configure MemMachine-Platform provider (OPENAI_COMPATIBLE)
+        if [[ "$llm_model" == "memmachine_platform_model" ]] || [[ "$embedder_model" == "memmachine_platform_embedder" ]]; then
+            local issuer_url=$(grep -A 10 "memmachine_platform_embedder:" configuration.yml | grep "issuer_url:" | awk -F': ' '{print $2}')
+            local client_id=$(grep -A 10 "memmachine_platform_embedder:" configuration.yml | grep "client_id:" | awk -F': ' '{print $2}')
+            local current_refresh_token=$(grep -A 10 "memmachine_platform_embedder:" configuration.yml | grep "refresh_token:" | awk -F': ' '{print $2}')
+
+            if [ -z "$current_refresh_token" ] || [ "$current_refresh_token" = "<YOUR_REFRESH_TOKEN>" ]; then
+                print_warning "MemMachine Platform refresh token is not configured."
+                print_info "Please log in to continue."
+                if do_oauth_device_login "$issuer_url" "$client_id"; then
+                    print_success "Login successful."
+                    safe_sed_inplace "s|refresh_token: <YOUR_REFRESH_TOKEN>|refresh_token: $OAUTH_REFRESH_TOKEN|g" configuration.yml
+                    print_success "Set refresh_token in configuration.yml"
+                else
+                    print_error "OAuth login failed."
+                    exit 1
+                fi
+            elif ! validate_refresh_token "$issuer_url" "$client_id" "$current_refresh_token"; then
+                print_warning "MemMachine Platform refresh token has expired or is invalid."
+                print_info "Please log in again to continue."
+                if do_oauth_device_login "$issuer_url" "$client_id"; then
+                    print_success "Login successful."
+                    safe_sed_inplace "s|refresh_token: $current_refresh_token|refresh_token: $OAUTH_REFRESH_TOKEN|g" configuration.yml
+                    print_success "Updated refresh_token in configuration.yml"
+                else
+                    print_error "OAuth login failed."
+                    exit 1
+                fi
+            else
+                print_success "MemMachine Platform refresh token is valid"
+                if [ -n "${OAUTH_REFRESH_TOKEN:-}" ] && [ "$OAUTH_REFRESH_TOKEN" != "$current_refresh_token" ]; then
+                    safe_sed_inplace "s|refresh_token: $current_refresh_token|refresh_token: $OAUTH_REFRESH_TOKEN|g" configuration.yml
+                    print_info "Refresh token was rotated and updated in configuration.yml"
+                fi
+            fi
+        fi
+
         # Configure OpenAI-compatible provider (OPENAI_COMPATIBLE)
         if [[ "$llm_model" == "openai_compatible_model" ]] || [[ "$embedder_model" == "openai_compatible_embedder" ]]; then
             if grep -q "<YOUR_API_KEY>" configuration.yml; then
@@ -658,6 +713,199 @@ set_provider_api_keys() {
             print_success "Set Ollama base URL: $base_url"
         fi
     fi
+}
+
+# Validate refresh token by attempting a token refresh
+# Returns 0 if valid, 1 if invalid/expired
+validate_refresh_token() {
+    local issuer_url="$1"
+    local client_id="$2"
+    local refresh_token="$3"
+
+    if [ -z "$refresh_token" ] || [ "$refresh_token" = "<YOUR_REFRESH_TOKEN>" ]; then
+        return 1
+    fi
+
+    local openid_config_url="${issuer_url}/.well-known/openid-configuration"
+    local openid_config
+    if ! openid_config="$(curl -k -sS --fail "$openid_config_url" 2>&1)"; then
+        return 1
+    fi
+
+    local token_endpoint
+    token_endpoint="$(printf '%s' "$openid_config" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("token_endpoint",""))' 2>/dev/null || true)"
+    if [ -z "$token_endpoint" ]; then
+        return 1
+    fi
+
+    local token_json
+    token_json="$(curl -k -sS -X POST "$token_endpoint" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        --data-urlencode "grant_type=refresh_token" \
+        --data-urlencode "client_id=$client_id" \
+        --data-urlencode "refresh_token=$refresh_token" 2>/dev/null)"
+
+    local access_token
+    access_token="$(printf '%s' "$token_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null || true)"
+
+    if [ -n "$access_token" ]; then
+        # Token rotation: server may issue a new refresh token
+        local new_refresh_token
+        new_refresh_token="$(printf '%s' "$token_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("refresh_token",""))' 2>/dev/null || true)"
+        if [ -n "$new_refresh_token" ] && [ "$new_refresh_token" != "$refresh_token" ]; then
+            OAUTH_REFRESH_TOKEN="$new_refresh_token"
+        fi
+        return 0
+    else
+        return 1
+    fi
+}
+
+do_oauth_device_login() {
+    local issuer_url="$1"
+    local client_id="$2"
+    local device_json=""
+    local err=""
+
+    # Fetch OpenID configuration to discover endpoints
+    local openid_config_url="${issuer_url}/.well-known/openid-configuration"
+    print_info "Fetching OpenID configuration from $openid_config_url..."
+    local openid_config
+    if ! openid_config="$(curl -k -sS --fail "$openid_config_url" 2>&1)"; then
+        print_error "Failed to fetch OpenID configuration from $openid_config_url: $openid_config"
+        return 1
+    fi
+
+    # Extract endpoints from OpenID configuration
+    local device_endpoint
+    local token_endpoint
+    if ! read -r device_endpoint token_endpoint < <(
+        printf '%s' "$openid_config" | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get("device_authorization_endpoint", ""), d.get("token_endpoint", ""))
+except json.JSONDecodeError as e:
+    print("", "", file=sys.stdout)
+    sys.exit(1)
+' 2>/dev/null
+    ); then
+        print_error "Failed to parse OpenID configuration as JSON"
+        return 1
+    fi
+
+    if [ -z "$device_endpoint" ]; then
+        print_error "Device authorization endpoint not found in OpenID configuration. The issuer may not support device flow."
+        return 1
+    fi
+
+    if [ -z "$token_endpoint" ]; then
+        print_error "Token endpoint not found in OpenID configuration."
+        return 1
+    fi
+
+    print_info "Requesting device code from $device_endpoint for client_id $client_id..."
+    if ! device_json="$(
+        curl -k -sS --fail -X POST \
+        "$device_endpoint" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        --data-urlencode "client_id=$client_id" \
+        --data-urlencode "scope=openid offline_access" 2>&1
+    )"; then
+        print_error "Failed to request device code: $device_json"
+        return 1
+    fi
+
+    # Check for error in device code response
+    if [ -z "$device_json" ]; then
+        print_error "Empty response from device authorization endpoint"
+        return 1
+    fi
+
+    err="$(printf '%s' "$device_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("error", ""))' 2>/dev/null || true)"
+    if [ -n "$err" ]; then
+        local err_desc
+        err_desc="$(printf '%s' "$device_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("error_description", ""))' 2>/dev/null || true)"
+        print_error "Device authorization failed: $err${err_desc:+ - $err_desc}"
+        return 1
+    fi
+
+    local device_code user_code verify_uri interval expires_in
+    if ! read -r device_code user_code verify_uri interval expires_in < <(
+        printf '%s' "$device_json" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+print(
+    d.get("device_code", ""),
+    d.get("user_code", ""),
+    d.get("verification_uri_complete") or d.get("verification_uri", ""),
+    d.get("interval", 5),
+    d.get("expires_in", 600)
+)
+' 2>/dev/null
+    ); then
+        print_error "Failed to parse device code response: $device_json"
+        return 1
+    fi
+
+    if [ -z "$device_code" ]; then
+        print_error "Missing device_code in response: $device_json"
+        return 1
+    fi
+
+    print_info "Login required."
+    print_info "Go to: ${verify_uri}"
+    print_info "If prompted for the authorization code, enter: $user_code"
+
+    local date_output
+    date_output=$(date +%s)
+    local deadline=$(( date_output + expires_in ))
+    local access_token=""
+    local token_json=""
+
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        token_json="$(
+            curl -k -sS -X POST \
+            "$token_endpoint" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
+            --data-urlencode "client_id=$client_id" \
+            --data-urlencode "device_code=$device_code"
+        )"
+
+        access_token="$(printf '%s' "$token_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null || true)"
+        if [ -n "$access_token" ]; then
+            break
+        fi
+
+        err="$(printf '%s' "$token_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("error",""))' 2>/dev/null || true)"
+        case "$err" in
+            authorization_pending)
+            echo -n "."
+            sleep "$interval"
+            ;;
+            slow_down)
+            interval=$((interval + 2))
+            sleep "$interval"
+            ;;
+            expired_token|access_denied)
+            echo
+            print_error "Login failed: $err"
+            return 1
+            ;;
+            *)
+            sleep "$interval"
+            ;;
+        esac
+    done
+
+    echo
+    if [ -z "$access_token" ]; then
+        print_error "Login timed out."
+        return 1
+    fi
+
+    OAUTH_REFRESH_TOKEN="$(printf '%s' "$token_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("refresh_token",""))' 2>/dev/null || true)"
 }
 
 # Check if required environment variables are set

@@ -4,10 +4,10 @@ from typing import Any, ClassVar, Self
 from urllib.parse import urlparse
 
 import yaml
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from memmachine.common.configuration.mixin_confs import (
-    ApiKeyMixin,
+    AuthMixin,
     AWSCredentialsMixin,
     MetricsFactoryIdMixin,
     YamlSerializableMixin,
@@ -32,18 +32,13 @@ def _clean_empty_lm_config(conf: dict) -> dict:
 
 
 class OpenAIResponsesLanguageModelConf(
-    MetricsFactoryIdMixin, YamlSerializableMixin, ApiKeyMixin
+    MetricsFactoryIdMixin, YamlSerializableMixin, AuthMixin
 ):
     """Configuration for OpenAI Responses-compatible models."""
 
     model: str = Field(
         default="gpt-5-nano",
         description="OpenAI Responses API-compatible model",
-    )
-    api_key: SecretStr = Field(
-        ...,
-        description="OpenAI Responses API key for authentication, Can"
-        "reference an environment variable using `$ENV` or `${ENV}` syntax ",
     )
     base_url: str | None = Field(
         default=None,
@@ -67,7 +62,7 @@ class OpenAIResponsesLanguageModelConf(
 
 
 class OpenAIChatCompletionsLanguageModelConf(
-    MetricsFactoryIdMixin, YamlSerializableMixin, ApiKeyMixin
+    MetricsFactoryIdMixin, YamlSerializableMixin, AuthMixin
 ):
     """Configuration for OpenAI Chat Completions-compatible models."""
 
